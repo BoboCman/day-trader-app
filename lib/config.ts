@@ -1,12 +1,10 @@
 /**
- * Watchlist: each leveraged fund is signalled off its unleveraged underlying,
+ * Watchlist: three low-overlap sectors (tech, health care, financials). Each leveraged fund is signalled off its unleveraged underlying,
  * which has cleaner price history and is what the fund actually tracks.
  */
 export const WATCHLIST = [
   { fund: "TECL", underlying: "XLK", name: "Technology 3x" },
-  { fund: "SOXL", underlying: "SOXX", name: "Semiconductors 3x" },
-  { fund: "TQQQ", underlying: "QQQ", name: "Nasdaq-100 3x" },
-  { fund: "SPXL", underlying: "SPY", name: "S&P 500 3x" },
+  { fund: "CURE", underlying: "XLV", name: "Health Care 3x" },
   { fund: "FAS", underlying: "XLF", name: "Financials 3x" },
 ] as const;
 

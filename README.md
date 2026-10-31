@@ -19,6 +19,8 @@ Signals are computed on each fund's unleveraged underlying (XLK, XLV, XLF), usin
 | Exit | Close above 5-day average | Close at a 7-day high |
 | Safety | Exit after 7 sessions, or if the fund is down 25% | same |
 
+**Risk layer.** One trade at a time under a single cap (`POSITION_SIZE_USD`, default $25k). Each buy is sized by volatility, so a typical day's move in the 3x fund is about `RISK_PER_DAY_USD` (default $1,000), never more than the cap. When several funds signal, the most oversold (lowest RSI(2)) is the top pick and the rest are listed as alternatives.
+
 The app does not track positions. Exit lines are reported as "if you are holding". Rule parameters live in `lib/config.ts`.
 
 ## Setup (one time)
@@ -33,7 +35,8 @@ The app does not track positions. Exit lines are reported as "if you are holding
    - `ALPACA_KEY_ID`
    - `ALPACA_SECRET_KEY`
    - `SIGNALS_API_KEY`: a long random string. You can generate one with `openssl rand -hex 32`. Save it, because n8n needs it too.
-   - `POSITION_SIZE_USD` (optional, defaults to 25000)
+   - `POSITION_SIZE_USD` (optional, defaults to 25000): total capital in play at once, across all signals
+   - `RISK_PER_DAY_USD` (optional, defaults to 1000): trades are sized so a typical day in the 3x fund moves about this many dollars
 3. Redeploy. To check that it works:
    `curl -H "Authorization: Bearer YOUR_SIGNALS_API_KEY" https://YOUR-APP.vercel.app/api/signals`
 

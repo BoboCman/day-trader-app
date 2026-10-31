@@ -1,7 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { dailyCloses, latestPrices, marketClock, nyDate } from "@/lib/alpaca";
-import { positionSize, RULES, WATCHLIST } from "@/lib/config";
+import { riskSettings, RULES, WATCHLIST } from "@/lib/config";
+import { planOrders } from "@/lib/risk";
 import { evaluate } from "@/lib/signals";
 
 export const dynamic = "force-dynamic";
@@ -31,8 +32,8 @@ export async function GET(req: Request) {
       latestPrices([...underlyings, ...funds]),
     ]);
 
-    const size = positionSize();
-    const results = WATCHLIST.map((w) => {
+    const risk = riskSettings();
+    const evaluated = WATCHLIST.map((w) => {
       const bars = history[w.underlying] ?? [];
       const liveQuote = live[w.underlying];
       if (!liveQuote || bars.length < RULES.trendSma) {
@@ -45,20 +46,22 @@ export async function GET(req: Request) {
         liveQuote.date > lastBarDate
           ? [...bars.map((b) => b.c), liveQuote.price]
           : bars.map((b) => b.c);
-      const sig = evaluate(closes);
-      const fundPrice = live[w.fund]?.price;
-      const order =
-        sig.action === "BUY" && fundPrice
-          ? {
-              fundPrice,
-              suggestedLimit: Math.round(fundPrice * 1.005 * 100) / 100,
-              fullShares: Math.floor(size / fundPrice),
-              halfShares: Math.floor(size / 2 / fundPrice),
-              positionSizeUsd: size,
-            }
-          : null;
-      return { ...w, fundPrice: fundPrice ?? null, signal: sig, order };
+      return { ...w, fundPrice: live[w.fund]?.price ?? null, signal: evaluate(closes) };
     });
+
+    // Risk layer: rank the buys, size each by volatility, recommend only the top one
+    // because all signals share one capital cap.
+    const plan = planOrders(
+      evaluated.flatMap((r) =>
+        "signal" in r && r.signal.action === "BUY" && r.fundPrice
+          ? [{ fund: r.fund, fundPrice: r.fundPrice, rsi2: r.signal.rsi2,
+               pctFromSma200: r.signal.pctFromSma200, dailyVolPct: r.signal.dailyVolPct }]
+          : [],
+      ),
+      risk,
+    );
+    const results = evaluated.map((r) => ("signal" in r ? { ...r, order: plan.get(r.fund) ?? null } : r));
+    const topPick = [...plan.entries()].find(([, o]) => o.recommended)?.[0] ?? null;
 
     const buys = results.filter((r) => "signal" in r && r.signal.action === "BUY");
     const exits = results.filter((r) => "signal" in r && r.signal.action === "EXIT_IF_HOLDING");
@@ -67,7 +70,7 @@ export async function GET(req: Request) {
     const subject = !clock.is_open
       ? `Market closed today (${today})`
       : buys.length
-        ? `BUY signal: ${buys.map((b) => b.fund).join(", ")} (${today})`
+        ? `BUY ${topPick}${buys.length > 1 ? ` (top pick of ${buys.length})` : ""} (${today})`
         : `No buy signals today (${today})`;
 
     const summary = results
@@ -86,6 +89,14 @@ export async function GET(req: Request) {
       marketOpen: clock.is_open,
       nextClose: clock.next_close,
       anyBuy: buys.length > 0,
+      topPick,
+      risk: {
+        ...risk,
+        description:
+          `One trade at a time, up to $${risk.totalCapUsd.toLocaleString("en-US")} total. Size is set so a typical ` +
+          `day's move in the 3x fund is about $${risk.riskPerDayUsd.toLocaleString("en-US")}. When several funds ` +
+          "signal, the top pick is the most oversold (lowest RSI(2)); the others are alternatives, not extra trades.",
+      },
       buyCount: buys.length,
       exitCount: exits.length,
       errorCount: errors.length,

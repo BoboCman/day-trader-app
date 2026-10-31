@@ -21,7 +21,9 @@ const C = {
 const font = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 
 const results = data.results ?? [];
-const buys = results.filter((r) => r.signal?.action === 'BUY');
+const buys = results
+  .filter((r) => r.signal?.action === 'BUY')
+  .sort((a, b) => (a.order?.rank ?? 99) - (b.order?.rank ?? 99));
 const exits = results.filter((r) => r.signal?.action === 'EXIT_IF_HOLDING');
 const errors = results.filter((r) => r.error);
 const noteFor = (fund) => (ai.buyNotes ?? []).find((n) => n.fund === fund)?.note ?? '';
@@ -60,11 +62,13 @@ const stat = (label, value, sub) => `
 
 const buyCard = (r) => {
   const s = r.signal, o = r.order;
+  const top = !o || o.recommended !== false;
+  const accent = top ? C.green : '#c4c9d1';
   const orderRow = o
     ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${C.line};border-radius:8px;border-collapse:separate;margin-top:12px;">
         <tr>
           ${stat('Limit price', money(o.suggestedLimit), `last ${money(o.fundPrice)}`)}
-          ${stat('Full size', `${o.fullShares} sh`, `≈ ${usd0(o.fullShares * o.suggestedLimit)}`)}
+          ${stat('Size', `${o.fullShares} sh`, `≈ ${usd0(o.fullShares * o.suggestedLimit)} · typical day ±${usd0(o.typicalDayUsd ?? 0)}`)}
           <td style="padding:10px 12px;" valign="top">
             <div style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:${C.sub};">Half size</div>
             <div style="font-size:18px;font-weight:700;color:${C.ink};padding-top:2px;">${o.halfShares} sh</div>
@@ -75,15 +79,16 @@ const buyCard = (r) => {
     : `<div style="margin-top:12px;font-size:13px;color:${C.red};">No live fund price, check before ordering.</div>`;
   return `
   <tr><td style="padding:0 0 14px 0;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.card};border:1px solid ${C.line};border-left:4px solid ${C.green};border-radius:10px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.card};border:1px solid ${C.line};border-left:4px solid ${accent};border-radius:10px;${top ? '' : 'opacity:.85;'}">
       <tr><td style="padding:16px 18px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
           <td valign="middle">
             <span style="font-size:22px;font-weight:800;color:${C.ink};letter-spacing:.3px;">${esc(r.fund)}</span>
             <span style="font-size:13px;color:${C.sub};padding-left:6px;">${esc(r.name)}</span>
           </td>
-          <td align="right" valign="middle">${pill('BUY', '#ffffff', C.green)}</td>
+          <td align="right" valign="middle">${top ? pill(buys.length > 1 ? 'TOP PICK' : 'BUY', '#ffffff', C.green) : pill('ALTERNATIVE', C.grey, C.greyBg)}</td>
         </tr></table>
+        ${top ? '' : `<div style="font-size:12px;color:${C.sub};padding-top:6px;">Only if you pass on the top pick. One trade at a time.</div>`}
         <div style="padding-top:8px;">${ruleChips(s)}</div>
         <div style="font-size:14px;line-height:1.5;color:${C.ink};">${esc(noteFor(r.fund) || s.reasons.join('. '))}</div>
         <div style="font-size:12px;color:${C.sub};padding-top:6px;">${esc(r.underlying)} ${s.price} · <span style="color:${tone(s.dayChangePct)};">${pct(s.dayChangePct)}</span> today · ${pct(s.pctFromSma200)} vs 200-day</div>
@@ -149,7 +154,7 @@ const html = `<!doctype html>
   <tr><td style="background:${C.card};padding:20px 22px;border-radius:0 0 12px 12px;border:1px solid ${C.line};border-top:none;">
     <div style="padding-bottom:8px;">${status}</div>
     <div style="font-size:22px;line-height:1.3;font-weight:700;color:${C.ink};">${esc(headline)}</div>
-    ${buys.length > 1 ? `<div style="font-size:13px;color:${C.sub};padding-top:6px;">${buys.length} funds signalled. Full size on all would be about ${usd0(buys.reduce((t, b) => t + (b.order ? b.order.fullShares * b.order.suggestedLimit : 0), 0))}.</div>` : ''}
+    ${buys.length > 1 ? `<div style="font-size:13px;color:${C.sub};padding-top:6px;">${buys.length} funds signalled. Top pick: <b style="color:${C.ink};">${esc(data.topPick ?? buys[0].fund)}</b>, the most oversold. One trade at a time${data.risk ? `, up to ${usd0(data.risk.totalCapUsd)}` : ''}.</div>` : ''}
   </td></tr>
 
   <tr><td style="height:18px;"></td></tr>
@@ -181,7 +186,7 @@ const html = `<!doctype html>
   ${errors.length ? `<tr><td style="padding:0 0 14px 0;font-size:13px;color:${C.red};">Data errors: ${errors.map((e) => esc(e.fund)).join(', ')}. Check those funds manually.</td></tr>` : ''}
 
   <tr><td style="padding:8px 4px 0 4px;font-size:12px;line-height:1.5;color:${C.sub};">
-    Rules: buy when the index is above its 200-day average and RSI(2) is under 10 or it closes at a 7-day low. Exit on a close above the 5-day average (RSI) or a 7-day high (Double 7s), after 7 sessions, or if the fund is down 25%.<br><br>
+    ${data.risk ? esc(data.risk.description) + '<br><br>' : ''}Rules: buy when the index is above its 200-day average and RSI(2) is under 10 or it closes at a 7-day low. Exit on a close above the 5-day average (RSI) or a 7-day high (Double 7s), after 7 sessions, or if the fund is down 25%.<br><br>
     Rules-based alert, not advice. Check the live price before placing the order.
   </td></tr>
 
@@ -193,7 +198,7 @@ const html = `<!doctype html>
 const subject = !data.marketOpen
   ? `Market closed · ${data.date}`
   : buys.length
-    ? `BUY ${buys.map((b) => b.fund).join(', ')} · ${data.date}`
+    ? `BUY ${data.topPick ?? buys[0].fund}${buys.length > 1 ? ` (top pick of ${buys.length})` : ''} · ${data.date}`
     : `No new buys · ${data.date}`;
 
 return [{ json: { html, subject } }];

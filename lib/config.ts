@@ -18,7 +18,21 @@ export const RULES = {
   disasterStopPct: -25,
 } as const;
 
-export function positionSize(): number {
-  const v = Number(process.env.POSITION_SIZE_USD);
-  return Number.isFinite(v) && v > 0 ? v : 25_000;
+const envNum = (name: string, fallback: number) => {
+  const v = Number(process.env[name]);
+  return Number.isFinite(v) && v > 0 ? v : fallback;
+};
+
+/**
+ * Portfolio risk settings.
+ * - totalCapUsd: most capital in play at once, across all signals (one trade at a time).
+ * - riskPerDayUsd: size each trade so a typical day's move in the 3x fund is about this many dollars.
+ */
+export function riskSettings() {
+  return {
+    totalCapUsd: envNum("POSITION_SIZE_USD", 25_000),
+    riskPerDayUsd: envNum("RISK_PER_DAY_USD", 1_000),
+    leverage: 3,
+    volLookback: 20,
+  };
 }

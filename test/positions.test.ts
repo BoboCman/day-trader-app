@@ -23,6 +23,12 @@ describe("positions", () => {
   it("flags sell today on an exit rule, the time stop, or the disaster stop", () => {
     expect(evaluatePosition(p, { price: 180, day: 2, rsi2Exit: true, double7Exit: false }).action).toBe("SELL_TODAY");
     expect(evaluatePosition(p, { price: 170, day: 7, rsi2Exit: false, double7Exit: false }).action).toBe("SELL_TODAY");
-    expect(evaluatePosition(p, { price: 120, day: 1, rsi2Exit: false, double7Exit: false }).reasons[0]).toMatch(/disaster/);
+    expect(evaluatePosition(p, { price: 120, day: 1, rsi2Exit: false, double7Exit: false }).reasons[0]).toMatch(/25% stop/);
+  });
+});
+
+describe("configurable stop", () => {
+  it("uses a custom stop distance", () => {
+    expect(disasterStop(100, 10)).toBe(90);
   });
 });

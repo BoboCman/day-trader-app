@@ -26,6 +26,7 @@ export default function PositionsPage() {
   const [positions, setPositions] = useState<Position[] | null>(null);
   const [configured, setConfigured] = useState(true);
   const [msg, setMsg] = useState("");
+  const [stopPct, setStopPct] = useState(25);
   const [form, setForm] = useState({ fund: "TECL", entryDate: todayNy(), entryPrice: "", shares: "" });
 
   useEffect(() => {
@@ -42,6 +43,7 @@ export default function PositionsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? res.statusText);
       if ("configured" in data) setConfigured(data.configured);
+      if (typeof data.stopLossPct === "number") setStopPct(data.stopLossPct);
       setPositions(data.positions);
       return data;
     },
@@ -112,7 +114,7 @@ export default function PositionsPage() {
             {open.length === 0 && <div style={{ color: "#57606a" }}>Nothing open.</div>}
             {open.map((p) => (
               <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderTop: "1px solid #e5e7eb", gap: 8 }}>
-                <div><b>{p.fund}</b> · {p.shares} sh @ {money(p.entryPrice)}<div style={{ fontSize: 13, color: "#57606a" }}>bought {p.entryDate} · stop {money(p.entryPrice * 0.75)}</div></div>
+                <div><b>{p.fund}</b> · {p.shares} sh @ {money(p.entryPrice)}<div style={{ fontSize: 13, color: "#57606a" }}>bought {p.entryDate} · stop {money(p.entryPrice * (1 - stopPct / 100))}</div></div>
                 <div style={{ display: "flex", gap: 6 }}><button style={btn} onClick={() => close(p)}>Sold</button><button style={ghost} onClick={() => remove(p)}>Delete</button></div>
               </div>
             ))}

@@ -1,5 +1,5 @@
 /** Position tracking: pure logic for "day N of 7", P/L and sell-today flags. */
-import { RULES } from "./config";
+import { RULES, riskSettings } from "./config";
 
 export interface Position {
   id: string;
@@ -27,13 +27,15 @@ export interface PositionStatus {
   pnlPct: number;
   pnlUsd: number;
   stopPrice: number;
+  stopLossPct: number;
   action: PositionAction;
   reasons: string[];
 }
 
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
-export const disasterStop = (entryPrice: number) => r2(entryPrice * (1 + RULES.disasterStopPct / 100));
+export const disasterStop = (entryPrice: number, stopLossPct = riskSettings().stopLossPct) =>
+  r2(entryPrice * (1 - stopLossPct / 100));
 
 /** Count trading sessions after the entry date, given the dates of sessions so far (incl. today if trading). */
 export function sessionsSince(entryDate: string, sessionDates: string[]): number {
@@ -45,12 +47,13 @@ export function evaluatePosition(
   ctx: { price: number; day: number; rsi2Exit: boolean; double7Exit: boolean },
 ): PositionStatus {
   const pnlPct = (ctx.price / p.entryPrice - 1) * 100;
-  const stopPrice = disasterStop(p.entryPrice);
+  const stopLossPct = riskSettings().stopLossPct;
+  const stopPrice = disasterStop(p.entryPrice, stopLossPct);
   const reasons: string[] = [];
   if (ctx.rsi2Exit) reasons.push("Index closed above its 5-day average (RSI(2) exit)");
   if (ctx.double7Exit) reasons.push("Index at a 7-day high (Double 7s exit)");
   if (ctx.day >= RULES.timeStopSessions) reasons.push(`Time stop: session ${ctx.day} of ${RULES.timeStopSessions}`);
-  if (pnlPct <= RULES.disasterStopPct) reasons.push(`Down ${r2(-pnlPct)}%, past the ${-RULES.disasterStopPct}% disaster stop`);
+  if (pnlPct <= -stopLossPct) reasons.push(`Down ${r2(-pnlPct)}%, past your ${stopLossPct}% stop`);
   return {
     id: p.id,
     fund: p.fund,
@@ -63,6 +66,7 @@ export function evaluatePosition(
     pnlPct: r2(pnlPct),
     pnlUsd: Math.round((ctx.price - p.entryPrice) * p.shares),
     stopPrice,
+    stopLossPct,
     action: reasons.length ? "SELL_TODAY" : "HOLD",
     reasons,
   };

@@ -95,7 +95,7 @@ const positionCard = (p) => {
           <td style="padding:10px 12px;" valign="top">
             <div style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:${C.sub};">Stop</div>
             <div style="font-size:18px;font-weight:700;color:${C.ink};padding-top:2px;">${money(p.stopPrice)}</div>
-            <div style="font-size:12px;color:${C.sub};">GTC, -25%</div>
+            <div style="font-size:12px;color:${C.sub};">GTC, -${p.stopLossPct ?? 25}%</div>
           </td>
         </tr></table>
         ${sell
@@ -146,7 +146,7 @@ const buyCard = (r) => {
         ${o && top && o.fullShares === 0 ? `<div style="margin-top:12px;font-size:13px;color:${C.amber};background:${C.amberBg};border-radius:8px;padding:10px 12px;">Your $${Math.round(data.risk?.totalCapUsd ?? 0).toLocaleString('en-US')} cap is already in use by open positions. Skip this one, or only take it after you sell.</div>` : ''}
         ${o && top && o.fullShares > 0 ? ticket([
           `<b>Buy ${o.fullShares} ${esc(r.fund)}</b> · limit <b>${money(o.suggestedLimit)}</b> · day order · place 3:45-3:55 PM ET`,
-          `Once filled: <b>sell stop ${o.fullShares} sh at ${money(o.stopPrice)}</b> · good 'til canceled (25% disaster stop)`,
+          `Once filled: <b>sell stop ${o.fullShares} sh at ${money(o.stopPrice ?? o.suggestedLimit * (1 - (o.stopLossPct ?? 25) / 100))}</b> · good 'til canceled (${o.stopLossPct ?? 25}% stop)`,
           `Log the fill${appUrl ? ` at <a href="${esc(appUrl)}/positions" style="color:${C.brand};">${esc(appUrl.replace(/^https?:\/\//, ''))}/positions</a>` : ' on the positions page'} so tomorrow's email tracks it`,
         ]) : ''}
       </td></tr>

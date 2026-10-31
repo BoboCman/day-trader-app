@@ -92,7 +92,7 @@ export async function GET(req: Request) {
               ...o,
               instructions:
                 `Buy ${o.fullShares} ${r.fund}, limit $${o.suggestedLimit.toFixed(2)}, day order, placed 3:45-3:55 PM ET. ` +
-                `Once filled, place a sell stop (GTC) at $${o.stopPrice.toFixed(2)} for the same ${o.fullShares} shares (-25% disaster stop).`,
+                `Once filled, place a sell stop (GTC) at $${o.stopPrice.toFixed(2)} for the same ${o.fullShares} shares (${o.stopLossPct}% stop).`,
             }
           : null,
       };

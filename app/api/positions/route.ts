@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { authorized } from "@/lib/auth";
-import { WATCHLIST } from "@/lib/config";
+import { riskSettings, WATCHLIST } from "@/lib/config";
 import type { Position } from "@/lib/positions";
 import { loadPositions, savePositions, storeConfigured } from "@/lib/store";
 
@@ -15,7 +15,7 @@ const isPos = (n: unknown): n is number => typeof n === "number" && Number.isFin
 export async function GET(req: Request) {
   if (!authorized(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!storeConfigured()) return NextResponse.json({ configured: false, positions: [] });
-  return NextResponse.json({ configured: true, positions: await loadPositions() });
+  return NextResponse.json({ configured: true, stopLossPct: riskSettings().stopLossPct, positions: await loadPositions() });
 }
 
 /**

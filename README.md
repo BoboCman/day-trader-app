@@ -23,7 +23,7 @@ Signals are computed on each fund's unleveraged underlying (XLK, XLV, XLF), usin
 
 **Positions.** Log each fill at `/positions` (unlock with your `SIGNALS_API_KEY`). The daily email then shows each open position as day N of 7 with P/L and its stop, and flags **SELL TODAY** with an order ticket when an exit rule, the 7-session time stop or the 25% disaster stop is hit. Capital in positions you keep holding counts against the cap. Without storage set up, the app works as before and shows generic "if you are holding" lines.
 
-**Order tickets.** Each recommended buy comes with exact steps: a limit buy (last price +0.5%, day order, placed 3:45-3:55 PM ET) and, once filled, a good-'til-canceled sell stop 25% below the limit. The stop is deliberately wide: dip-buys often dip further before they recover, so a tight stop on a 3x fund tends to sell at the low. Normal exits happen at the close when the email says SELL TODAY.
+**Order tickets.** Each recommended buy comes with exact steps: a limit buy (last price +0.5%, day order, placed 3:45-3:55 PM ET) and, once filled, a good-'til-canceled sell stop `STOP_LOSS_PCT` below the limit (default 25%). The stop is deliberately wide: dip-buys often dip further before they recover, so a tight stop on a 3x fund tends to sell at the low. Normal exits happen at the close when the email says SELL TODAY.
 
 Rule parameters live in `lib/config.ts`.
 
@@ -41,6 +41,7 @@ Rule parameters live in `lib/config.ts`.
    - `SIGNALS_API_KEY`: a long random string. You can generate one with `openssl rand -hex 32`. Save it, because n8n needs it too.
    - `POSITION_SIZE_USD` (optional, defaults to 25000): total capital in play at once, across all signals
    - `RISK_PER_DAY_USD` (optional, defaults to 1000): trades are sized so a typical day in the 3x fund moves about this many dollars
+   - `STOP_LOSS_PCT` (optional, defaults to 25): how far below your entry the GTC stop sits, and the loss that triggers SELL TODAY
 3. Redeploy. To check that it works:
    `curl -H "Authorization: Bearer YOUR_SIGNALS_API_KEY" https://YOUR-APP.vercel.app/api/signals`
 

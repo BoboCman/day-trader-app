@@ -24,7 +24,11 @@ const results = data.results ?? [];
 const buys = results
   .filter((r) => r.signal?.action === 'BUY')
   .sort((a, b) => (a.order?.rank ?? 99) - (b.order?.rank ?? 99));
-const exits = results.filter((r) => r.signal?.action === 'EXIT_IF_HOLDING');
+const positions = (data.positions ?? []);
+const heldFunds = new Set(positions.map((p) => p.fund));
+const sells = positions.filter((p) => p.action === 'SELL_TODAY');
+const exits = results.filter((r) => r.signal?.action === 'EXIT_IF_HOLDING' && !heldFunds.has(r.fund));
+const appUrl = data.appUrl || '';
 const errors = results.filter((r) => r.error);
 const noteFor = (fund) => (ai.buyNotes ?? []).find((n) => n.fund === fund)?.note ?? '';
 
@@ -40,7 +44,9 @@ const pill = (text, fg, bg) =>
 
 const status = !data.marketOpen
   ? pill('Market closed', C.grey, C.greyBg)
-  : buys.length
+  : sells.length
+    ? pill(`Sell ${sells.map((p) => p.fund).join(', ')} today`, '#ffffff', C.red)
+    : buys.length
     ? pill(`${buys.length} buy signal${buys.length > 1 ? 's' : ''}`, C.green, C.greenBg)
     : pill('No new buys', C.grey, C.greyBg);
 
@@ -59,6 +65,50 @@ const stat = (label, value, sub) => `
     <div style="font-size:18px;font-weight:700;color:${C.ink};padding-top:2px;">${value}</div>
     ${sub ? `<div style="font-size:12px;color:${C.sub};">${sub}</div>` : ''}
   </td>`;
+
+const ticket = (steps) => `
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px;background:#f6f8fb;border:1px solid ${C.line};border-radius:8px;">
+    <tr><td style="padding:12px 14px;">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:${C.sub};padding-bottom:6px;">Order ticket</div>
+      ${steps.map((t, i) => `<div style="font-size:13px;line-height:1.5;color:${C.ink};padding:2px 0;">${i + 1}. ${t}</div>`).join('')}
+    </td></tr>
+  </table>`;
+
+const positionCard = (p) => {
+  if (p.error) return `<tr><td style="padding:0 0 10px 0;font-size:13px;color:${C.red};">${esc(p.fund)}: ${esc(p.error)}</td></tr>`;
+  const sell = p.action === 'SELL_TODAY';
+  const limit = Math.round(p.price * 0.995 * 100) / 100;
+  return `
+  <tr><td style="padding:0 0 14px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.card};border:1px solid ${C.line};border-left:4px solid ${sell ? C.red : '#c4c9d1'};border-radius:10px;">
+      <tr><td style="padding:16px 18px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+          <td valign="middle">
+            <span style="font-size:20px;font-weight:800;color:${C.ink};">${esc(p.fund)}</span>
+            <span style="font-size:13px;color:${C.sub};padding-left:6px;">day ${p.day} of ${p.maxDays} · ${p.shares} sh @ ${money(p.entryPrice)}</span>
+          </td>
+          <td align="right" valign="middle">${sell ? pill('SELL TODAY', '#ffffff', C.red) : pill('HOLD', C.grey, C.greyBg)}</td>
+        </tr></table>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${C.line};border-radius:8px;border-collapse:separate;margin-top:12px;"><tr>
+          ${stat('Now', money(p.price), '')}
+          ${stat('P/L', `<span style="color:${tone(p.pnlPct)};">${pct(p.pnlPct)}</span>`, `${p.pnlUsd >= 0 ? '+' : '-'}${usd0(Math.abs(p.pnlUsd))}`)}
+          <td style="padding:10px 12px;" valign="top">
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:${C.sub};">Stop</div>
+            <div style="font-size:18px;font-weight:700;color:${C.ink};padding-top:2px;">${money(p.stopPrice)}</div>
+            <div style="font-size:12px;color:${C.sub};">GTC, -${p.stopLossPct ?? 25}%</div>
+          </td>
+        </tr></table>
+        ${sell
+          ? `<div style="font-size:13px;color:${C.ink};padding-top:10px;">${esc(p.reasons.join('. '))}.</div>` + ticket([
+              `<b>Cancel your GTC stop</b> on ${esc(p.fund)} first`,
+              `<b>Sell ${p.shares} ${esc(p.fund)}</b> · limit <b>${money(limit)}</b> · day order · place 3:45-3:55 PM ET`,
+              `Mark it sold${appUrl ? ` at <a href="${esc(appUrl)}/positions" style="color:${C.brand};">${esc(appUrl.replace(/^https?:\/\//, ''))}/positions</a>` : ' on the positions page'}`,
+            ])
+          : `<div style="font-size:13px;color:${C.sub};padding-top:10px;">No exit rule met. Keep holding; your stop stays in place.</div>`}
+      </td></tr>
+    </table>
+  </td></tr>`;
+};
 
 const buyCard = (r) => {
   const s = r.signal, o = r.order;
@@ -93,6 +143,12 @@ const buyCard = (r) => {
         <div style="font-size:14px;line-height:1.5;color:${C.ink};">${esc(noteFor(r.fund) || s.reasons.join('. '))}</div>
         <div style="font-size:12px;color:${C.sub};padding-top:6px;">${esc(r.underlying)} ${s.price} · <span style="color:${tone(s.dayChangePct)};">${pct(s.dayChangePct)}</span> today · ${pct(s.pctFromSma200)} vs 200-day</div>
         ${orderRow}
+        ${o && top && o.fullShares === 0 ? `<div style="margin-top:12px;font-size:13px;color:${C.amber};background:${C.amberBg};border-radius:8px;padding:10px 12px;">Your $${Math.round(data.risk?.totalCapUsd ?? 0).toLocaleString('en-US')} cap is already in use by open positions. Skip this one, or only take it after you sell.</div>` : ''}
+        ${o && top && o.fullShares > 0 ? ticket([
+          `<b>Buy ${o.fullShares} ${esc(r.fund)}</b> · limit <b>${money(o.suggestedLimit)}</b> · day order · place 3:45-3:55 PM ET`,
+          `Once filled: <b>sell stop ${o.fullShares} sh at ${money(o.stopPrice ?? o.suggestedLimit * (1 - (o.stopLossPct ?? 25) / 100))}</b> · good 'til canceled (${o.stopLossPct ?? 25}% stop)`,
+          `Log the fill${appUrl ? ` at <a href="${esc(appUrl)}/positions" style="color:${C.brand};">${esc(appUrl.replace(/^https?:\/\//, ''))}/positions</a>` : ' on the positions page'} so tomorrow's email tracks it`,
+        ]) : ''}
       </td></tr>
     </table>
   </td></tr>`;
@@ -158,6 +214,7 @@ const html = `<!doctype html>
   </td></tr>
 
   <tr><td style="height:18px;"></td></tr>
+  ${positions.length ? section('Your positions') + positions.map(positionCard).join('') : ''}
   ${section(buys.length ? 'Buy signals' : 'Today')}
   ${buys.length ? buys.map(buyCard).join('') : noBuys}
 
@@ -197,7 +254,9 @@ const html = `<!doctype html>
 
 const subject = !data.marketOpen
   ? `Market closed · ${data.date}`
-  : buys.length
+  : sells.length
+    ? `SELL ${sells.map((p) => p.fund).join(', ')}${buys.length ? ` · BUY ${data.topPick ?? buys[0].fund}` : ''} · ${data.date}`
+    : buys.length
     ? `BUY ${data.topPick ?? buys[0].fund}${buys.length > 1 ? ` (top pick of ${buys.length})` : ''} · ${data.date}`
     : `No new buys · ${data.date}`;
 

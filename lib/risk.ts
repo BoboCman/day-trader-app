@@ -25,12 +25,17 @@ export interface SizedOrder {
   typicalDayUsd: number;
   rank: number;
   recommended: boolean;
+  /** Protective sell stop to place (GTC) right after the buy fills */
+  stopPrice: number;
+  stopLossPct: number;
 }
 
 export interface RiskSettings {
   totalCapUsd: number;
   riskPerDayUsd: number;
   leverage: number;
+  /** GTC stop distance below the limit, in % */
+  stopLossPct?: number;
 }
 
 /** Deepest oversold first (lowest RSI(2)); ties go to the larger cushion above the 200-day. */
@@ -54,6 +59,8 @@ export function sizeOrder(c: BuyCandidate, s: RiskSettings, rank: number): Sized
     typicalDayUsd: Math.round(fullShares * suggestedLimit * (fundDailyVolPct / 100)),
     rank,
     recommended: rank === 1,
+    stopPrice: Math.round(suggestedLimit * (1 - (s.stopLossPct ?? 25) / 100) * 100) / 100,
+    stopLossPct: s.stopLossPct ?? 25,
   };
 }
 

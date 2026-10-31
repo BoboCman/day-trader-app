@@ -15,6 +15,7 @@ export const RULES = {
   rsiExitSma: 5,
   double7Lookback: 7,
   timeStopSessions: 7,
+  /** Default stop-loss below entry, in %; override with STOP_LOSS_PCT */
   disasterStopPct: -25,
 } as const;
 
@@ -33,6 +34,8 @@ export function riskSettings() {
     totalCapUsd: envNum("POSITION_SIZE_USD", 25_000),
     riskPerDayUsd: envNum("RISK_PER_DAY_USD", 1_000),
     leverage: 3,
+    /** Protective GTC stop distance below the entry, in % (positive number) */
+    stopLossPct: envNum("STOP_LOSS_PCT", -RULES.disasterStopPct),
     volLookback: 20,
   };
 }

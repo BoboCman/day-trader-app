@@ -1,21 +1,14 @@
-import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { dailyCloses, latestPrices, marketClock, nyDate } from "@/lib/alpaca";
 import { riskSettings, RULES, WATCHLIST } from "@/lib/config";
+import { authorized } from "@/lib/auth";
+import { evaluatePosition, sessionsSince } from "@/lib/positions";
 import { planOrders } from "@/lib/risk";
+import { loadPositions, storeConfigured } from "@/lib/store";
 import { evaluate } from "@/lib/signals";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-function authorized(req: Request): boolean {
-  const expected = process.env.SIGNALS_API_KEY;
-  if (!expected) return false;
-  const got = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
-  const a = Buffer.from(got);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 export async function GET(req: Request) {
   if (!authorized(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -27,10 +20,12 @@ export async function GET(req: Request) {
 
     const underlyings = WATCHLIST.map((w) => w.underlying);
     const funds = WATCHLIST.map((w) => w.fund);
-    const [history, live] = await Promise.all([
+    const [history, live, positions] = await Promise.all([
       dailyCloses(underlyings, today),
       latestPrices([...underlyings, ...funds]),
+      loadPositions().catch(() => null),
     ]);
+    const sessionDates: Record<string, string[]> = {};
 
     const risk = riskSettings();
     const evaluated = WATCHLIST.map((w) => {
@@ -42,12 +37,39 @@ export async function GET(req: Request) {
       // On weekends and holidays the latest trade belongs to the last completed bar, so
       // re-evaluate that session instead of appending a duplicate close.
       const lastBarDate = nyDate(new Date(bars[bars.length - 1].t));
+      sessionDates[w.fund] = [
+        ...bars.map((b) => nyDate(new Date(b.t))),
+        ...(liveQuote.date > lastBarDate ? [liveQuote.date] : []),
+      ];
       const closes =
         liveQuote.date > lastBarDate
           ? [...bars.map((b) => b.c), liveQuote.price]
           : bars.map((b) => b.c);
       return { ...w, fundPrice: live[w.fund]?.price ?? null, signal: evaluate(closes) };
     });
+
+    // Open positions you logged: day N of 7, P/L, and whether any exit rule says sell today.
+    const held = (positions ?? [])
+      .filter((p) => !p.closedDate)
+      .map((p) => {
+        const r = evaluated.find((e) => e.fund === p.fund);
+        if (!r || !("signal" in r) || !r.fundPrice) {
+          return { id: p.id, fund: p.fund, error: "fund not in watchlist or no live price" };
+        }
+        return evaluatePosition(p, {
+          price: r.fundPrice,
+          day: sessionsSince(p.entryDate, sessionDates[p.fund] ?? []),
+          rsi2Exit: r.signal.rsi2Exit,
+          double7Exit: r.signal.double7Exit,
+        });
+      });
+    const sellToday = held.filter((h) => "action" in h && h.action === "SELL_TODAY");
+
+    // Capital still tied up in positions you keep holding counts against the shared cap.
+    const capInUse = (positions ?? [])
+      .filter((p) => !p.closedDate && !sellToday.some((h) => h.id === p.id))
+      .reduce((t, p) => t + p.entryPrice * p.shares, 0);
+    const capRemainingUsd = Math.max(0, Math.round(risk.totalCapUsd - capInUse));
 
     // Risk layer: rank the buys, size each by volatility, recommend only the top one
     // because all signals share one capital cap.
@@ -58,9 +80,24 @@ export async function GET(req: Request) {
                pctFromSma200: r.signal.pctFromSma200, dailyVolPct: r.signal.dailyVolPct }]
           : [],
       ),
-      risk,
+      { ...risk, totalCapUsd: capRemainingUsd },
     );
-    const results = evaluated.map((r) => ("signal" in r ? { ...r, order: plan.get(r.fund) ?? null } : r));
+    const results = evaluated.map((r) => {
+      if (!("signal" in r)) return r;
+      const o = plan.get(r.fund);
+      return {
+        ...r,
+        order: o
+          ? {
+              ...o,
+              instructions:
+                `Buy ${o.fullShares} ${r.fund}, limit $${o.suggestedLimit.toFixed(2)}, day order, placed 3:45-3:55 PM ET. ` +
+                `Once filled, place a sell stop (GTC) at $${o.stopPrice.toFixed(2)} for the same ${o.fullShares} shares (${o.stopLossPct}% stop).`,
+            }
+          : null,
+      };
+    });
+
     const topPick = [...plan.entries()].find(([, o]) => o.recommended)?.[0] ?? null;
 
     const buys = results.filter((r) => "signal" in r && r.signal.action === "BUY");
@@ -69,7 +106,9 @@ export async function GET(req: Request) {
 
     const subject = !clock.is_open
       ? `Market closed today (${today})`
-      : buys.length
+      : sellToday.length
+        ? `SELL ${sellToday.map((h) => h.fund).join(", ")}${buys.length ? ` · BUY ${topPick}` : ""} (${today})`
+        : buys.length
         ? `BUY ${topPick}${buys.length > 1 ? ` (top pick of ${buys.length})` : ""} (${today})`
         : `No buy signals today (${today})`;
 
@@ -90,6 +129,12 @@ export async function GET(req: Request) {
       nextClose: clock.next_close,
       anyBuy: buys.length > 0,
       topPick,
+      appUrl: new URL(req.url).origin,
+      positions: held,
+      positionsEnabled: storeConfigured(),
+      capInUseUsd: Math.round(capInUse),
+      capRemainingUsd,
+      sellTodayCount: sellToday.length,
       risk: {
         ...risk,
         description:

@@ -21,7 +21,11 @@ Signals are computed on each fund's unleveraged underlying (XLK, XLV, XLF), usin
 
 **Risk layer.** One trade at a time under a single cap (`POSITION_SIZE_USD`, default $25k). Each buy is sized by volatility, so a typical day's move in the 3x fund is about `RISK_PER_DAY_USD` (default $1,000), never more than the cap. When several funds signal, the most oversold (lowest RSI(2)) is the top pick and the rest are listed as alternatives.
 
-The app does not track positions. Exit lines are reported as "if you are holding". Rule parameters live in `lib/config.ts`.
+**Positions.** Log each fill at `/positions` (unlock with your `SIGNALS_API_KEY`). The daily email then shows each open position as day N of 7 with P/L and its stop, and flags **SELL TODAY** with an order ticket when an exit rule, the 7-session time stop or the 25% disaster stop is hit. Capital in positions you keep holding counts against the cap. Without storage set up, the app works as before and shows generic "if you are holding" lines.
+
+**Order tickets.** Each recommended buy comes with exact steps: a limit buy (last price +0.5%, day order, placed 3:45-3:55 PM ET) and, once filled, a good-'til-canceled sell stop 25% below the limit. The stop is deliberately wide: dip-buys often dip further before they recover, so a tight stop on a 3x fund tends to sell at the low. Normal exits happen at the close when the email says SELL TODAY.
+
+Rule parameters live in `lib/config.ts`.
 
 ## Setup (one time)
 
@@ -39,6 +43,8 @@ The app does not track positions. Exit lines are reported as "if you are holding
    - `RISK_PER_DAY_USD` (optional, defaults to 1000): trades are sized so a typical day in the 3x fund moves about this many dollars
 3. Redeploy. To check that it works:
    `curl -H "Authorization: Bearer YOUR_SIGNALS_API_KEY" https://YOUR-APP.vercel.app/api/signals`
+
+4. Position storage (optional, free): in Vercel, open **Storage → Create → Upstash (Redis)**, pick the free plan, and connect it to this project. Vercel adds `KV_REST_API_URL` and `KV_REST_API_TOKEN` for you. Redeploy, then open `/positions`.
 
 Each merge to `main` redeploys automatically.
 

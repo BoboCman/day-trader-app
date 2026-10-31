@@ -41,3 +41,13 @@ export function highest(values: number[], n: number): number | null {
   if (values.length < n) return null;
   return Math.max(...values.slice(-n));
 }
+
+/** Average absolute daily % change over the last n sessions (a simple "typical day" volatility). */
+export function avgAbsChangePct(values: number[], n: number): number | null {
+  if (values.length < n + 1) return null;
+  let sum = 0;
+  for (let i = values.length - n; i < values.length; i++) {
+    sum += Math.abs(values[i] / values[i - 1] - 1);
+  }
+  return (sum / n) * 100;
+}

@@ -1,5 +1,5 @@
 import { RULES } from "./config";
-import { highest, lowest, rsi, sma } from "./indicators";
+import { avgAbsChangePct, highest, lowest, rsi, sma } from "./indicators";
 
 export type Action = "BUY" | "EXIT_IF_HOLDING" | "NONE";
 
@@ -14,6 +14,8 @@ export interface UnderlyingEval {
   sma5: number;
   low7: number;
   high7: number;
+  /** Typical daily move of the underlying over 20 sessions, in % */
+  dailyVolPct: number;
   rsi2Entry: boolean;
   double7Entry: boolean;
   rsi2Exit: boolean;
@@ -39,6 +41,7 @@ export function evaluate(closes: number[]): UnderlyingEval {
   const r = rsi(closes, RULES.rsiPeriod)!;
   const low7 = lowest(closes, RULES.double7Lookback)!;
   const high7 = highest(closes, RULES.double7Lookback)!;
+  const dailyVolPct = avgAbsChangePct(closes, 20)!;
 
   const aboveTrend = price > sma200;
   const rsi2Entry = aboveTrend && r < RULES.rsiEntryBelow;
@@ -67,6 +70,7 @@ export function evaluate(closes: number[]): UnderlyingEval {
     sma5: round(sma5),
     low7: round(low7),
     high7: round(high7),
+    dailyVolPct: round(dailyVolPct),
     rsi2Entry,
     double7Entry,
     rsi2Exit,

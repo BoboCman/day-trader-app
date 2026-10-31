@@ -118,7 +118,7 @@ const buyCard = (r) => {
     ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${C.line};border-radius:8px;border-collapse:separate;margin-top:12px;">
         <tr>
           ${stat('Limit price', money(o.suggestedLimit), `last ${money(o.fundPrice)}`)}
-          ${stat('Size', `${o.fullShares} sh`, `≈ ${usd0(o.fullShares * o.suggestedLimit)} · typical day ±${usd0(o.typicalDayUsd ?? 0)}`)}
+          ${stat(o.cautioned ? 'Size (halved)' : 'Size', `${o.fullShares} sh`, `≈ ${usd0(o.fullShares * o.suggestedLimit)} · typical day ±${usd0(o.typicalDayUsd ?? 0)}`)}
           <td style="padding:10px 12px;" valign="top">
             <div style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:${C.sub};">Half size</div>
             <div style="font-size:18px;font-weight:700;color:${C.ink};padding-top:2px;">${o.halfShares} sh</div>
@@ -142,6 +142,8 @@ const buyCard = (r) => {
         <div style="padding-top:8px;">${ruleChips(s)}</div>
         <div style="font-size:14px;line-height:1.5;color:${C.ink};">${esc(noteFor(r.fund) || s.reasons.join('. '))}</div>
         <div style="font-size:12px;color:${C.sub};padding-top:6px;">${esc(r.underlying)} ${s.price} · <span style="color:${tone(s.dayChangePct)};">${pct(s.dayChangePct)}</span> today · ${pct(s.pctFromSma200)} vs 200-day</div>
+        ${lookThrough(r)}
+        ${cautionBox(r)}
         ${orderRow}
         ${o && top && o.fullShares === 0 ? `<div style="margin-top:12px;font-size:13px;color:${C.amber};background:${C.amberBg};border-radius:8px;padding:10px 12px;">Your $${Math.round(data.risk?.totalCapUsd ?? 0).toLocaleString('en-US')} cap is already in use by open positions. Skip this one, or only take it after you sell.</div>` : ''}
         ${o && top && o.fullShares > 0 ? ticket([
@@ -152,6 +154,54 @@ const buyCard = (r) => {
       </td></tr>
     </table>
   </td></tr>`;
+};
+
+// ---------- market context (release 2)
+const ctx = data.context ?? {};
+const fear = ctx.fear;
+const fearPill = fear
+  ? fear.regime === 'spiking' ? pill('Spiking', '#ffffff', C.red)
+    : fear.regime === 'elevated' ? pill('Elevated', C.amber, C.amberBg)
+    : pill('Calm', C.green, C.greenBg)
+  : '';
+const events = ctx.events ?? [];
+const eventDate = (d) => new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+const contextStrip = fear || events.length ? `
+  <tr><td style="padding:0 0 14px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.card};border:1px solid ${C.line};border-radius:10px;border-collapse:separate;"><tr>
+      ${fear ? `<td style="padding:12px 14px;border-right:1px solid ${C.line};" valign="top" width="50%">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:${C.sub};">Fear gauge (${esc(fear.symbol)})</div>
+        <div style="padding-top:4px;">${fearPill} <span style="font-size:13px;color:${C.ink};padding-left:4px;">${pct(fear.pctVs20d)} vs 20-day</span></div>
+        <div style="font-size:12px;color:${C.sub};padding-top:2px;">${money(fear.price)} · <span style="color:${tone(fear.dayChangePct)};">${pct(fear.dayChangePct)}</span> today</div>
+      </td>` : ''}
+      <td style="padding:12px 14px;" valign="top">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:${C.sub};">Next 3 days</div>
+        ${events.length
+          ? events.map((e) => `<div style="font-size:13px;color:${C.ink};padding-top:4px;"><b>${esc(eventDate(e.date))}</b> · ${esc(e.name)}</div>`).join('')
+          : `<div style="font-size:13px;color:${C.sub};padding-top:4px;">No Fed meeting or jobs report</div>`}
+      </td>
+    </tr></table>
+  </td></tr>` : '';
+
+const lookThrough = (r) => {
+  const c = r.context;
+  if (!c) return '';
+  const b = c.breadth;
+  const breadthLine = b && b.total
+    ? `<div style="font-size:12px;color:${C.sub};padding-top:6px;">Top 10 holdings: <b style="color:${C.ink};">${b.down} of ${b.total} down</b>${b.kind === 'broad' ? ' (broad selloff)' : b.kind === 'narrow' ? ' (narrow, a few names)' : ''} · weakest ${b.worst.map((w) => `${esc(w.symbol)} <span style="color:${tone(w.pct)};">${pct(w.pct)}</span>`).join(', ')}</div>`
+    : '';
+  const news = (c.news ?? []).map((n) =>
+    `<div style="font-size:12px;line-height:1.45;color:${C.ink};padding-top:4px;"><b>${esc(n.symbol)}</b> · ${n.url ? `<a href="${esc(n.url)}" style="color:${C.brand};text-decoration:none;">${esc(n.headline)}</a>` : esc(n.headline)}</div>`).join('');
+  return breadthLine + (news ? `<div style="padding-top:6px;"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:${C.sub};">Headlines</div>${news}</div>` : '');
+};
+
+const cautionBox = (r) => {
+  const reasons = r.context?.caution?.reasons ?? [];
+  if (!reasons.length) return '';
+  return `<div style="margin-top:12px;background:${C.amberBg};border:1px solid #f1d58a;border-radius:8px;padding:10px 12px;">
+    <div style="font-size:12px;font-weight:700;color:${C.amber};text-transform:uppercase;letter-spacing:.6px;">Caution · size halved</div>
+    ${reasons.map((x) => `<div style="font-size:13px;line-height:1.45;color:${C.ink};padding-top:3px;">• ${esc(x)}</div>`).join('')}
+  </div>`;
 };
 
 const noBuys = `
@@ -214,6 +264,7 @@ const html = `<!doctype html>
   </td></tr>
 
   <tr><td style="height:18px;"></td></tr>
+  ${contextStrip}
   ${positions.length ? section('Your positions') + positions.map(positionCard).join('') : ''}
   ${section(buys.length ? 'Buy signals' : 'Today')}
   ${buys.length ? buys.map(buyCard).join('') : noBuys}
@@ -243,7 +294,8 @@ const html = `<!doctype html>
   ${errors.length ? `<tr><td style="padding:0 0 14px 0;font-size:13px;color:${C.red};">Data errors: ${errors.map((e) => esc(e.fund)).join(', ')}. Check those funds manually.</td></tr>` : ''}
 
   <tr><td style="padding:8px 4px 0 4px;font-size:12px;line-height:1.5;color:${C.sub};">
-    ${data.risk ? esc(data.risk.description) + '<br><br>' : ''}Rules: buy when the index is above its 200-day average and RSI(2) is under 10 or it closes at a 7-day low. Exit on a close above the 5-day average (RSI) or a 7-day high (Double 7s), after 7 sessions, or if the fund is down 25%.<br><br>
+    ${data.risk ? esc(data.risk.description) + '<br><br>' : ''}Rules: buy when the index is above its 200-day average and RSI(2) is under 10 or it closes at a 7-day low. Exit on a close above the 5-day average (RSI) or a 7-day high (Double 7s), after 7 sessions, or if the fund is down ${data.risk?.stopLossPct ?? 25}%.<br><br>
+    ${ctx.description ? esc(ctx.description) + '<br><br>' : ''}
     Rules-based alert, not advice. Check the live price before placing the order.
   </td></tr>
 

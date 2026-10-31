@@ -8,6 +8,35 @@ export const WATCHLIST = [
   { fund: "FAS", underlying: "XLF", name: "Financials 3x" },
 ] as const;
 
+/**
+ * Largest holdings of each underlying, used for the look-through (breadth and single-stock shocks).
+ * Approximate and hand-maintained: refresh a few times a year from the fund pages.
+ */
+export const TOP_HOLDINGS: Record<string, string[]> = {
+  XLK: ["NVDA", "AAPL", "MSFT", "AVGO", "ORCL", "CRM", "CSCO", "AMD", "IBM", "NOW"],
+  XLV: ["LLY", "UNH", "JNJ", "ABBV", "MRK", "TMO", "ABT", "ISRG", "AMGN", "DHR"],
+  XLF: ["BRK.B", "JPM", "V", "MA", "BAC", "WFC", "GS", "MS", "AXP", "SPGI"],
+};
+
+/** Proxy for the VIX fear gauge (VIX itself is an index Alpaca doesn't carry). */
+export const FEAR_PROXY = "VIXY";
+
+/**
+ * Scheduled macro events that often move markets. FOMC = Fed rate decision day.
+ * Jobs reports are added automatically as the first Friday of each month (approximate).
+ * Verify against federalreserve.gov and add CPI dates here if you want them flagged.
+ */
+export const MACRO_EVENTS: { date: string; name: string }[] = [
+  { date: "2026-01-28", name: "Fed decision (FOMC)" },
+  { date: "2026-03-18", name: "Fed decision (FOMC)" },
+  { date: "2026-04-29", name: "Fed decision (FOMC)" },
+  { date: "2026-06-17", name: "Fed decision (FOMC)" },
+  { date: "2026-07-29", name: "Fed decision (FOMC)" },
+  { date: "2026-09-16", name: "Fed decision (FOMC)" },
+  { date: "2026-10-28", name: "Fed decision (FOMC)" },
+  { date: "2026-12-09", name: "Fed decision (FOMC)" },
+];
+
 export const RULES = {
   trendSma: 200,
   rsiPeriod: 2,

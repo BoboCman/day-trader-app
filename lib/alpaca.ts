@@ -22,8 +22,12 @@ interface Bar { t: string; c: number }
  * Daily closes for completed sessions before today (split/dividend adjusted).
  * The free plan allows SIP history that ends 15+ minutes ago, which covers all prior days.
  */
-export async function dailyCloses(symbols: string[], todayNy: string): Promise<Record<string, Bar[]>> {
-  const start = new Date(Date.now() - 420 * 86_400_000).toISOString().slice(0, 10);
+export async function dailyCloses(
+  symbols: string[],
+  todayNy: string,
+  calendarDays = 420,
+): Promise<Record<string, Bar[]>> {
+  const start = new Date(Date.now() - calendarDays * 86_400_000).toISOString().slice(0, 10);
   const end = new Date(Date.now() - 16 * 60_000).toISOString();
   const out: Record<string, Bar[]> = {};
   let pageToken: string | undefined;
@@ -68,6 +72,26 @@ export async function latestPrices(
     if (src?.p) out[s] = { price: src.p, date: nyDate(new Date(src.t)) };
   }
   return out;
+}
+
+export interface NewsItem {
+  headline: string;
+  symbols: string[];
+  created_at: string;
+  url?: string;
+  source?: string;
+}
+
+/** Recent headlines for the given symbols (Alpaca news API, included in the free plan). */
+export async function recentNews(symbols: string[], sinceHours = 30): Promise<NewsItem[]> {
+  const q = new URLSearchParams({
+    symbols: symbols.join(","),
+    start: new Date(Date.now() - sinceHours * 3_600_000).toISOString(),
+    limit: "50",
+    sort: "desc",
+  });
+  const body = await get<{ news?: NewsItem[] }>(`${DATA}/v1beta1/news?${q}`);
+  return body.news ?? [];
 }
 
 export async function marketClock(): Promise<{ is_open: boolean; next_close: string; next_open: string }> {

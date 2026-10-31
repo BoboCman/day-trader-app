@@ -10,6 +10,8 @@ export interface BuyCandidate {
   pctFromSma200: number;
   /** Typical daily move of the underlying, in % */
   dailyVolPct: number;
+  /** 0.5 when a caution flag is up (release 2), else 1 */
+  sizeMultiplier?: number;
 }
 
 export interface SizedOrder {
@@ -47,7 +49,7 @@ export function sizeOrder(c: BuyCandidate, s: RiskSettings, rank: number): Sized
   const suggestedLimit = Math.round(c.fundPrice * 1.005 * 100) / 100;
   const fundDailyVolPct = c.dailyVolPct * s.leverage;
   const riskSized = fundDailyVolPct > 0 ? s.riskPerDayUsd / (fundDailyVolPct / 100) : s.totalCapUsd;
-  const sizeUsd = Math.round(Math.min(s.totalCapUsd, riskSized));
+  const sizeUsd = Math.round(Math.min(s.totalCapUsd, riskSized) * (c.sizeMultiplier ?? 1));
   const fullShares = Math.floor(sizeUsd / suggestedLimit);
   return {
     fundPrice: c.fundPrice,

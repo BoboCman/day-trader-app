@@ -34,13 +34,19 @@ export async function GET(req: Request) {
     const size = positionSize();
     const results = WATCHLIST.map((w) => {
       const bars = history[w.underlying] ?? [];
-      const livePrice = live[w.underlying];
-      if (!livePrice || bars.length < RULES.trendSma) {
-        return { ...w, error: `not enough data (${bars.length} bars, live=${livePrice ?? "none"})` };
+      const liveQuote = live[w.underlying];
+      if (!liveQuote || bars.length < RULES.trendSma) {
+        return { ...w, error: `not enough data (${bars.length} bars, live=${liveQuote?.price ?? "none"})` };
       }
-      const closes = [...bars.map((b) => b.c), livePrice];
+      // On weekends and holidays the latest trade belongs to the last completed bar, so
+      // re-evaluate that session instead of appending a duplicate close.
+      const lastBarDate = nyDate(new Date(bars[bars.length - 1].t));
+      const closes =
+        liveQuote.date > lastBarDate
+          ? [...bars.map((b) => b.c), liveQuote.price]
+          : bars.map((b) => b.c);
       const sig = evaluate(closes);
-      const fundPrice = live[w.fund];
+      const fundPrice = live[w.fund]?.price;
       const order =
         sig.action === "BUY" && fundPrice
           ? {

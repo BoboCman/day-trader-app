@@ -51,15 +51,21 @@ export async function dailyCloses(symbols: string[], todayNy: string): Promise<R
 }
 
 /** Latest trade price per symbol (IEX feed on the free plan; real-time). */
-export async function latestPrices(symbols: string[]): Promise<Record<string, number>> {
+export async function latestPrices(
+  symbols: string[],
+): Promise<Record<string, { price: number; date: string }>> {
   const q = new URLSearchParams({ symbols: symbols.join(","), feed: "iex" });
-  const body = await get<Record<string, { latestTrade?: { p: number }; dailyBar?: { c: number } }>>(
-    `${DATA}/v2/stocks/snapshots?${q}`,
-  );
-  const out: Record<string, number> = {};
+  const body = await get<
+    Record<string, { latestTrade?: { p: number; t: string }; dailyBar?: { c: number; t: string } }>
+  >(`${DATA}/v2/stocks/snapshots?${q}`);
+  const out: Record<string, { price: number; date: string }> = {};
   for (const [s, snap] of Object.entries(body)) {
-    const p = snap.latestTrade?.p ?? snap.dailyBar?.c;
-    if (p) out[s] = p;
+    const src = snap.latestTrade
+      ? { p: snap.latestTrade.p, t: snap.latestTrade.t }
+      : snap.dailyBar
+        ? { p: snap.dailyBar.c, t: snap.dailyBar.t }
+        : null;
+    if (src?.p) out[s] = { price: src.p, date: nyDate(new Date(src.t)) };
   }
   return out;
 }

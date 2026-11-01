@@ -38,7 +38,8 @@ function priceQuality(fund: Quote | undefined, underlying: Quote | undefined, no
   const warnings: string[] = [];
   if (open && underlyingAgeMin !== null && underlyingAgeMin > 10) warnings.push(`Index price is ${underlyingAgeMin} min old`);
   if (open && fundAgeMin !== null && fundAgeMin > 10) warnings.push(`Fund price is ${fundAgeMin} min old`);
-  if (spreadPct !== null && spreadPct > 1) warnings.push(`Wide bid/ask on IEX (${spreadPct}%): check the live quote at Fidelity`);
+  // Outside market hours IEX quotes are thin and often stale, so the spread check only runs while open.
+  if (open && spreadPct !== null && spreadPct > 1) warnings.push(`Wide bid/ask on IEX (${spreadPct}%): check the live quote at Fidelity`);
   return { fundAgeMin, underlyingAgeMin, spreadPct, warnings };
 }
 
@@ -93,16 +94,21 @@ export async function GET(req: Request) {
       const b = breadth(changes, signal.dayChangePct);
       const flags = newsFlags(news, [...top, w.underlying, w.fund]);
       const caution = cautionFor({ fear, breadth: b, news: flags, events });
+      // Fund price: the live trade while today's session is the latest, otherwise the official
+      // (SIP, consolidated) close of the last session. On weekends and holidays the IEX last trade
+      // is a single-exchange print that can differ from the close Yahoo and Fidelity show.
+      const fundSeries = withLive(history[w.fund] ?? [], live[w.fund]);
+      const fundPrice = fundSeries.closes.at(-1) ?? live[w.fund]?.price ?? null;
       return {
         ...w,
-        fundPrice: live[w.fund]?.price ?? null,
+        fundPrice,
         signal,
         context: { breadth: b, news: flags, caution },
         quality: priceQuality(live[w.fund], liveQuote, now, clock.is_open),
         trend: (() => {
           const index = trendStats(closes);
-          const fund = trendStats(withLive(history[w.fund] ?? [], live[w.fund]).closes);
-          return { index, fund, ...stanceFor(signal, index, w.underlying) };
+          const fund = trendStats(fundSeries.closes);
+          return { index, fund, asOf: fundSeries.dates.at(-1) ?? null, ...stanceFor(signal, index, w.underlying) };
         })(),
       };
     });

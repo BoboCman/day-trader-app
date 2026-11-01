@@ -10,6 +10,8 @@ export const runtime = "nodejs";
 
 const FUNDS: readonly string[] = WATCHLIST.map((w) => w.fund);
 const isDate = (s: unknown): s is string => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+const RULES = ["RSI2", "DOUBLE7", "BOTH"] as const;
+const REASONS = ["rsi2 exit", "double7 exit", "time stop", "stop loss", "manual"];
 const isPos = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n > 0;
 
 export async function GET(req: Request) {
@@ -19,8 +21,8 @@ export async function GET(req: Request) {
 }
 
 /**
- * Body: {action:"open", fund, entryDate, entryPrice, shares}
- *     | {action:"close", id, closedDate, exitPrice}
+ * Body: {action:"open", fund, entryDate, entryPrice, shares, entryRule?, suggestedLimit?}
+ *     | {action:"close", id, closedDate, exitPrice, exitReason?}
  *     | {action:"delete", id}
  */
 export async function POST(req: Request) {
@@ -34,6 +36,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: `need fund (${FUNDS.join("/")}), entryDate YYYY-MM-DD, entryPrice, shares` }, { status: 400 });
     }
     const p: Position = { id: randomUUID(), fund: b.fund, entryDate: b.entryDate, entryPrice: b.entryPrice, shares: Math.floor(b.shares) };
+    if (RULES.includes(b.entryRule as (typeof RULES)[number])) p.entryRule = b.entryRule as Position["entryRule"];
+    if (isPos(b.suggestedLimit)) p.suggestedLimit = b.suggestedLimit;
     list.push(p);
   } else if (b.action === "close") {
     const p = list.find((x) => x.id === b.id);
@@ -42,6 +46,7 @@ export async function POST(req: Request) {
     }
     p.closedDate = b.closedDate;
     p.exitPrice = b.exitPrice;
+    if (typeof b.exitReason === "string" && REASONS.includes(b.exitReason)) p.exitReason = b.exitReason;
   } else if (b.action === "delete") {
     const i = list.findIndex((x) => x.id === b.id);
     if (i < 0) return NextResponse.json({ error: "not found" }, { status: 404 });

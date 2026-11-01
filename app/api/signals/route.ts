@@ -1,21 +1,20 @@
 import { NextResponse } from "next/server";
-import { dailyCloses, latestPrices, marketClock, nyDate, recentNews, type NewsItem } from "@/lib/alpaca";
+import { dailyCloses, latestPrices, marketClock, nyDate, recentNews, type NewsItem, type Quote } from "@/lib/alpaca";
 import { FEAR_PROXY, riskSettings, RULES, TOP_HOLDINGS, WATCHLIST } from "@/lib/config";
 import { breadth, cautionFor, fearGauge, newsFlags, upcomingEvents } from "@/lib/context";
 import { authorized } from "@/lib/auth";
 import { evaluatePosition, sessionsSince } from "@/lib/positions";
 import { planOrders } from "@/lib/risk";
-import { loadPositions, storeConfigured } from "@/lib/store";
+import { loadPositions, saveSnapshot, storeConfigured } from "@/lib/store";
 import { evaluate } from "@/lib/signals";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 type Bar = { t: string; c: number };
-type Quote = { price: number; date: string } | undefined;
 
 /** Closes with today's live price appended, unless the live trade belongs to the last bar (weekends, holidays). */
-function withLive(bars: Bar[], q: Quote): { closes: number[]; dates: string[] } {
+function withLive(bars: Bar[], q: Quote | undefined): { closes: number[]; dates: string[] } {
   const dates = bars.map((b) => nyDate(new Date(b.t)));
   const closes = bars.map((b) => b.c);
   if (q && (!dates.length || q.date > dates[dates.length - 1])) {
@@ -23,6 +22,23 @@ function withLive(bars: Bar[], q: Quote): { closes: number[]; dates: string[] } 
     dates.push(q.date);
   }
   return { closes, dates };
+}
+
+/**
+ * Sanity checks on the live prices that drive today's signal: a last trade more than 10 minutes old,
+ * or a wide IEX bid/ask on the fund. Warnings only; they never change the signal or the size.
+ */
+function priceQuality(fund: Quote | undefined, underlying: Quote | undefined, now: Date, open: boolean) {
+  const age = (q?: Quote) => (q ? Math.round((now.getTime() - Date.parse(q.time)) / 60_000) : null);
+  const fundAgeMin = age(fund);
+  const underlyingAgeMin = age(underlying);
+  const spreadPct =
+    fund?.bid && fund?.ask ? Math.round(((fund.ask - fund.bid) / ((fund.ask + fund.bid) / 2)) * 10_000) / 100 : null;
+  const warnings: string[] = [];
+  if (open && underlyingAgeMin !== null && underlyingAgeMin > 10) warnings.push(`Index price is ${underlyingAgeMin} min old`);
+  if (open && fundAgeMin !== null && fundAgeMin > 10) warnings.push(`Fund price is ${fundAgeMin} min old`);
+  if (spreadPct !== null && spreadPct > 1) warnings.push(`Wide bid/ask on IEX (${spreadPct}%): check the live quote at Fidelity`);
+  return { fundAgeMin, underlyingAgeMin, spreadPct, warnings };
 }
 
 const pct = (closes: number[]) =>
@@ -45,7 +61,7 @@ export async function GET(req: Request) {
       latestPrices([...underlyings, ...funds, FEAR_PROXY]),
       loadPositions().catch(() => null),
       dailyCloses(holdings, today, 10).catch(() => ({}) as Record<string, Bar[]>),
-      latestPrices(holdings).catch(() => ({}) as Record<string, { price: number; date: string }>),
+      latestPrices(holdings).catch(() => ({}) as Record<string, Quote>),
       recentNews([...holdings, ...underlyings, ...funds]).catch(() => [] as NewsItem[]),
     ]);
 
@@ -76,7 +92,13 @@ export async function GET(req: Request) {
       const b = breadth(changes, signal.dayChangePct);
       const flags = newsFlags(news, [...top, w.underlying, w.fund]);
       const caution = cautionFor({ fear, breadth: b, news: flags, events });
-      return { ...w, fundPrice: live[w.fund]?.price ?? null, signal, context: { breadth: b, news: flags, caution } };
+      return {
+        ...w,
+        fundPrice: live[w.fund]?.price ?? null,
+        signal,
+        context: { breadth: b, news: flags, caution },
+        quality: priceQuality(live[w.fund], liveQuote, now, clock.is_open),
+      };
     });
 
     // Open positions you logged: day N of 7, P/L, and whether any exit rule says sell today.
@@ -96,24 +118,30 @@ export async function GET(req: Request) {
       });
     const sellToday = held.filter((h) => "action" in h && h.action === "SELL_TODAY");
 
-    // Capital still tied up in positions you keep holding counts against the shared cap.
-    const capInUse = (positions ?? [])
-      .filter((p) => !p.closedDate && !sellToday.some((h) => h.id === p.id))
+    // Capital stays committed until you mark the lot sold: a SELL TODAY flag is not a fill.
+    // If storage is set up but can't be read, we can't know your exposure, so no buy is sized.
+    const positionsUnavailable = positions === null && storeConfigured();
+    const openLots = (positions ?? []).filter((p) => !p.closedDate);
+    const capInUse = openLots.reduce((t, p) => t + p.entryPrice * p.shares, 0);
+    const sellingCost = openLots
+      .filter((p) => sellToday.some((h) => h.id === p.id))
       .reduce((t, p) => t + p.entryPrice * p.shares, 0);
-    const capRemainingUsd = Math.max(0, Math.round(risk.totalCapUsd - capInUse));
+    const capRemainingUsd = positionsUnavailable ? 0 : Math.max(0, Math.round(risk.totalCapUsd - capInUse));
+    const capAfterSellsUsd = positionsUnavailable ? 0 : Math.max(0, Math.round(risk.totalCapUsd - capInUse + sellingCost));
 
     // Risk layer: rank the buys, size each by volatility, recommend only the top one
     // because all signals share one capital cap.
-    const plan = planOrders(
+    const candidates =
       evaluated.flatMap((r) =>
         "signal" in r && r.signal.action === "BUY" && r.fundPrice
           ? [{ fund: r.fund, fundPrice: r.fundPrice, rsi2: r.signal.rsi2,
                pctFromSma200: r.signal.pctFromSma200, dailyVolPct: r.signal.dailyVolPct,
                sizeMultiplier: r.context.caution.sizeMultiplier }]
           : [],
-      ),
-      { ...risk, totalCapUsd: capRemainingUsd },
-    );
+      );
+    const plan = planOrders(candidates, { ...risk, totalCapUsd: capRemainingUsd });
+    // What the buy would be once today's sells have filled (shown, never sized into the cap early).
+    const planAfterSells = sellingCost > 0 ? planOrders(candidates, { ...risk, totalCapUsd: capAfterSellsUsd }) : null;
     const results = evaluated.map((r) => {
       if (!("signal" in r)) return r;
       const o = plan.get(r.fund);
@@ -123,6 +151,11 @@ export async function GET(req: Request) {
           ? {
               ...o,
               cautioned: r.context.caution.sizeMultiplier < 1,
+              entryRule: r.signal.rsi2Entry && r.signal.double7Entry ? "BOTH" : r.signal.rsi2Entry ? "RSI2" : "DOUBLE7",
+              afterSells: planAfterSells?.get(r.fund)
+                ? { fullShares: planAfterSells.get(r.fund)!.fullShares, halfShares: planAfterSells.get(r.fund)!.halfShares,
+                    sizeUsd: planAfterSells.get(r.fund)!.sizeUsd }
+                : null,
               instructions:
                 `Buy ${o.fullShares} ${r.fund}, limit $${o.suggestedLimit.toFixed(2)}, day order, placed 3:45-3:55 PM ET. ` +
                 `Once filled, place a sell stop (GTC) at $${o.stopPrice.toFixed(2)} for the same ${o.fullShares} shares (${o.stopLossPct}% stop).`,
@@ -156,7 +189,7 @@ export async function GET(req: Request) {
       )
       .join("\n");
 
-    return NextResponse.json({
+    const body = {
       asOf: now.toISOString(),
       date: today,
       marketOpen: clock.is_open,
@@ -168,6 +201,8 @@ export async function GET(req: Request) {
       positionsEnabled: storeConfigured(),
       capInUseUsd: Math.round(capInUse),
       capRemainingUsd,
+      capAfterSellsUsd,
+      positionsUnavailable,
       sellTodayCount: sellToday.length,
       context: {
         fear,
@@ -182,7 +217,11 @@ export async function GET(req: Request) {
         description:
           `One trade at a time, up to $${risk.totalCapUsd.toLocaleString("en-US")} total. Size is set so a typical ` +
           `day's move in the 3x fund is about $${risk.riskPerDayUsd.toLocaleString("en-US")}. When several funds ` +
-          "signal, the top pick is the most oversold (lowest RSI(2)); the others are alternatives, not extra trades.",
+          "signal, the top pick is the most oversold (lowest RSI(2)); the others are alternatives, not extra trades." +
+          (risk.maxLossPerTradeUsd
+            ? ` Size is also capped so a stop-out loses at most about $${risk.maxLossPerTradeUsd.toLocaleString("en-US")}.`
+            : "") +
+          " Capital stays committed until you mark a lot sold.",
       },
       buyCount: buys.length,
       exitCount: exits.length,
@@ -198,7 +237,10 @@ export async function GET(req: Request) {
           `sessions or if the fund is down ${risk.stopLossPct}% from entry.`,
       },
       results,
-    });
+    };
+    // Daily record for the scorecard and later review; best-effort.
+    if (clock.is_open) await saveSnapshot(today, body).catch(() => undefined);
+    return NextResponse.json(body);
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 502 });
   }

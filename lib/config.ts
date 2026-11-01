@@ -66,5 +66,7 @@ export function riskSettings() {
     /** Protective GTC stop distance below the entry, in % (positive number) */
     stopLossPct: envNum("STOP_LOSS_PCT", -RULES.disasterStopPct),
     volLookback: 20,
+    /** Most you're willing to lose per trade if the stop is hit; 0 = off */
+    maxLossPerTradeUsd: envNum("MAX_LOSS_PER_TRADE_USD", 0),
   };
 }

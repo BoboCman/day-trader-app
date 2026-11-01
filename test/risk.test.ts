@@ -35,3 +35,18 @@ describe("risk layer", () => {
     expect(plan.get("FAS")!.recommended).toBe(true);
   });
 });
+
+describe("loss budget", () => {
+  const base = { fund: "TECL", fundPrice: 100, rsi2: 5, pctFromSma200: 10, dailyVolPct: 1 };
+  it("caps size so a stop-out loses at most the budget", () => {
+    const o = sizeOrder(base, { totalCapUsd: 25_000, riskPerDayUsd: 1_000, leverage: 3, stopLossPct: 20, maxLossPerTradeUsd: 2_000 }, 1);
+    expect(o.sizeUsd).toBe(10_000);
+    expect(o.sizeLimitedBy).toBe("loss budget");
+    expect(o.lossAtStopUsd).toBeLessThanOrEqual(2_000);
+  });
+  it("is off by default and reports what limited the size", () => {
+    const o = sizeOrder(base, { totalCapUsd: 25_000, riskPerDayUsd: 1_000, leverage: 3, stopLossPct: 20 }, 1);
+    expect(o.sizeUsd).toBe(25_000);
+    expect(o.sizeLimitedBy).toBe("cap");
+  });
+});

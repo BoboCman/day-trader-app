@@ -10,6 +10,12 @@ export interface Position {
   shares: number;
   closedDate?: string;
   exitPrice?: number;
+  /** Which rule fired the buy, for the scorecard */
+  entryRule?: "RSI2" | "DOUBLE7" | "BOTH";
+  /** The limit the email suggested, to measure slippage against the fill */
+  suggestedLimit?: number;
+  /** Why it was sold: rsi2 exit, double7 exit, time stop, stop loss, manual */
+  exitReason?: string;
 }
 
 export type PositionAction = "SELL_TODAY" | "HOLD";

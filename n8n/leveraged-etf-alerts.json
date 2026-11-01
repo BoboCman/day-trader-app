@@ -86,9 +86,12 @@
       ],
       "parameters": {
         "promptType": "define",
-        "text": "=You write the short prose for a daily trading alert email. The reader trades 3x leveraged ETFs by hand at Fidelity.\n\nThe JSON below comes from a rules engine. Its signals are final: never change, add or second-guess a BUY or exit. Prices, share counts and tables are rendered separately from the data, so do not repeat order details.\n\nReturn only these fields:\n- headline: under 12 words, plain English, what today means (e.g. \"Broad tech selloff puts three funds on the buy list\" or \"Quiet day, no new buys\").\n- buyNotes: one entry per fund whose action is BUY (if several, start the topPick fund's note with why it ranks first: the lowest RSI(2), i.e. most oversold; the others are alternatives, not extra trades), with fund and a one-sentence note on why it triggered (which rule, the key numbers, how much cushion above the 200-day average). If that fund has caution reasons (context.caution.reasons), add a second short sentence saying the size is halved and why. Empty array if none.\n- If positions has any entry with action SELL_TODAY, the headline must say so first (e.g. \"Time to sell TECL\").\n- backdrop: 2 to 3 sentences on the day using only numbers in the data (day change, distance from 200-day average, RSI). Mention funds blocked by the 200-day filter and any exit conditions. You may mention the fear gauge (context.fear), upcoming events (context.events), top-holdings breadth and the headlines in each result's context.news, quoted only as given. Each result has trend (index and fund returns over 5 days, 1, 3 and 6 months, and offHigh3m) and trend.stance: BUY, WATCH, PASS or NONE. You may name a WATCH fund and its trigger, or say why a fund is PASS, using trend.reason. WATCH and PASS are context only: never call them a buy or suggest an order. Never add news, earnings or facts that are not in the data.\n\nData:\n{{ JSON.stringify($('Get signals').item.json, null, 2) }}",
+        "text": "=You write the short prose for a daily trading alert email. The reader trades 3x leveraged ETFs by hand at Fidelity.\n\nThe JSON below comes from a rules engine. Its signals are final: never change, add or second-guess a BUY or exit. Prices, share counts and tables are shown separately, so do not repeat order details.\n\nReturn only these fields, and keep every one short:\n- headline: under 12 words, plain English. If any position has action SELL_TODAY, say that first (e.g. \"Time to sell TECL\"). Otherwise say what today means (e.g. \"Tech selloff puts TECL on the buy list\" or \"Quiet day, no new buys\").\n- buyNotes: one entry per fund whose action is BUY, with fund and a note of one or two sentences: which rule fired, the key numbers, and the cushion above the 200-day average. If several, start the topPick's note with why it ranks first (lowest RSI(2)); the others are alternatives, not extra trades. If the fund has caution reasons, add one short sentence saying the size is halved and why. Empty array if none.\n- backdrop: 2 to 3 sentences using only numbers in the data. You may mention the fear gauge, upcoming events, breadth, headlines (quoted only as given), exit conditions, and a fund whose stance is WATCH (with its trigger) or PASS (with its stanceReason). WATCH and PASS are context only: never call them a buy. Never add facts that are not in the data.\n\nData:\n{{ JSON.stringify($('Get signals').item.json.aiBrief ?? $('Get signals').item.json.summary) }}",
         "hasOutputParser": true
-      }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2
     },
     {
       "id": "5",
@@ -106,7 +109,7 @@
           "value": "claude-sonnet-5-5"
         },
         "options": {
-          "maxTokensToSample": 800,
+          "maxTokensToSample": 2000,
           "temperature": 0.2
         }
       }

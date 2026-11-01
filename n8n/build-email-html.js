@@ -114,15 +114,18 @@ const buyCard = (r) => {
   const s = r.signal, o = r.order;
   const top = !o || o.recommended !== false;
   const accent = top ? C.green : '#c4c9d1';
+  const waiting = !!o && o.fullShares === 0 && !!o.afterSells?.fullShares;
+  const full = o ? (waiting ? o.afterSells.fullShares : o.fullShares) : 0;
+  const half = o ? (waiting ? o.afterSells.halfShares : o.halfShares) : 0;
   const orderRow = o
     ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${C.line};border-radius:8px;border-collapse:separate;margin-top:12px;">
         <tr>
           ${stat('Limit price', money(o.suggestedLimit), `last ${money(o.fundPrice)}`)}
-          ${stat(o.cautioned ? 'Size (halved)' : 'Size', `${o.fullShares} sh`, `≈ ${usd0(o.fullShares * o.suggestedLimit)} · typical day ±${usd0(o.typicalDayUsd ?? 0)}`)}
+          ${stat((waiting ? 'After sale' : 'Size') + (o.cautioned ? ' (halved)' : o.sizeLimitedBy === 'loss budget' ? ' (loss budget)' : ''), `${full} sh`, `≈ ${usd0(full * o.suggestedLimit)} · loss at stop ≈ ${usd0(full * (o.suggestedLimit - (o.stopPrice ?? 0)))}`)}
           <td style="padding:10px 12px;" valign="top">
             <div style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:${C.sub};">Half size</div>
-            <div style="font-size:18px;font-weight:700;color:${C.ink};padding-top:2px;">${o.halfShares} sh</div>
-            <div style="font-size:12px;color:${C.sub};">≈ ${usd0(o.halfShares * o.suggestedLimit)}</div>
+            <div style="font-size:18px;font-weight:700;color:${C.ink};padding-top:2px;">${half} sh</div>
+            <div style="font-size:12px;color:${C.sub};">≈ ${usd0(half * o.suggestedLimit)}</div>
           </td>
         </tr>
       </table>`
@@ -145,12 +148,20 @@ const buyCard = (r) => {
         ${lookThrough(r)}
         ${cautionBox(r)}
         ${orderRow}
-        ${o && top && o.fullShares === 0 ? `<div style="margin-top:12px;font-size:13px;color:${C.amber};background:${C.amberBg};border-radius:8px;padding:10px 12px;">Your $${Math.round(data.risk?.totalCapUsd ?? 0).toLocaleString('en-US')} cap is already in use by open positions. Skip this one, or only take it after you sell.</div>` : ''}
-        ${o && top && o.fullShares > 0 ? ticket([
-          `<b>Buy ${o.fullShares} ${esc(r.fund)}</b> · limit <b>${money(o.suggestedLimit)}</b> · day order · place 3:45-3:55 PM ET`,
-          `Once filled: <b>sell stop ${o.fullShares} sh at ${money(o.stopPrice ?? o.suggestedLimit * (1 - (o.stopLossPct ?? 25) / 100))}</b> · good 'til canceled (${o.stopLossPct ?? 25}% stop)`,
-          `Log the fill${appUrl ? ` at <a href="${esc(appUrl)}/positions" style="color:${C.brand};">${esc(appUrl.replace(/^https?:\/\//, ''))}/positions</a>` : ' on the positions page'} so tomorrow's email tracks it`,
-        ]) : ''}
+        ${qualityBox(r)}
+        ${o && top && o.fullShares === 0 ? `<div style="margin-top:12px;font-size:13px;color:${C.amber};background:${C.amberBg};border-radius:8px;padding:10px 12px;">${
+          data.positionsUnavailable
+            ? 'Couldn\'t load your positions, so no size is given. Check the positions page before buying anything.'
+            : o.afterSells?.fullShares
+              ? `Your cap stays committed until your ${esc(sells.map((p) => p.fund).join(', '))} sale fills. Only once it has: buy up to <b>${o.afterSells.fullShares} sh</b> (half: ${o.afterSells.halfShares}).`
+              : `Your $${Math.round(data.risk?.totalCapUsd ?? 0).toLocaleString('en-US')} cap is already in use by open positions. Skip this one, or only take it after you sell.`
+        }</div>` : ''}
+        ${o && top && (o.fullShares > 0 || o.afterSells?.fullShares) ? ((n) => ticket([
+          ...(o.fullShares === 0 ? [`<b>Wait until your sell fills</b>, then mark it sold`] : []),
+          `<b>Buy ${n} ${esc(r.fund)}</b> · limit <b>${money(o.suggestedLimit)}</b> · day order · place 3:45-3:55 PM ET`,
+          `Once filled: <b>sell stop ${n} sh at ${money(o.stopPrice ?? o.suggestedLimit * (1 - (o.stopLossPct ?? 25) / 100))}</b> · good 'til canceled (${o.stopLossPct ?? 25}% stop)`,
+          `Log the fill${appUrl ? ` at <a href="${esc(logUrl(r, o, n))}" style="color:${C.brand};">${esc(appUrl.replace(/^https?:\/\//, ''))}/positions</a> (pre-filled)` : ' on the positions page'} so tomorrow's email tracks it`,
+        ]))(o.fullShares || o.afterSells.fullShares) : ''}
       </td></tr>
     </table>
   </td></tr>`;
@@ -203,6 +214,15 @@ const cautionBox = (r) => {
     ${reasons.map((x) => `<div style="font-size:13px;line-height:1.45;color:${C.ink};padding-top:3px;">• ${esc(x)}</div>`).join('')}
   </div>`;
 };
+
+const qualityBox = (r) => {
+  const w = r.quality?.warnings ?? [];
+  return w.length
+    ? `<div style="margin-top:10px;font-size:12px;color:${C.red};">${w.map((x) => `⚠ ${esc(x)}`).join('<br>')}</div>`
+    : '';
+};
+const logUrl = (r, o, n) =>
+  `${appUrl}/positions?${new URLSearchParams({ fund: r.fund, rule: o.entryRule ?? '', limit: String(o.suggestedLimit), shares: String(n) })}`;
 
 const noBuys = `
   <tr><td style="padding:0 0 14px 0;">

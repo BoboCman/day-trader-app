@@ -54,22 +54,42 @@ export async function dailyCloses(
   return out;
 }
 
+/** Last trade (time = ISO timestamp) plus the IEX top-of-book bid/ask when present. */
+export interface Quote {
+  price: number;
+  date: string;
+  time: string;
+  bid?: number;
+  ask?: number;
+}
+
 /** Latest trade price per symbol (IEX feed on the free plan; real-time). */
 export async function latestPrices(
   symbols: string[],
-): Promise<Record<string, { price: number; date: string }>> {
+): Promise<Record<string, Quote>> {
   const q = new URLSearchParams({ symbols: symbols.join(","), feed: "iex" });
   const body = await get<
-    Record<string, { latestTrade?: { p: number; t: string }; dailyBar?: { c: number; t: string } }>
+    Record<string, {
+      latestTrade?: { p: number; t: string };
+      latestQuote?: { ap: number; bp: number; t: string };
+      dailyBar?: { c: number; t: string };
+    }>
   >(`${DATA}/v2/stocks/snapshots?${q}`);
-  const out: Record<string, { price: number; date: string }> = {};
+  const out: Record<string, Quote> = {};
   for (const [s, snap] of Object.entries(body)) {
     const src = snap.latestTrade
       ? { p: snap.latestTrade.p, t: snap.latestTrade.t }
       : snap.dailyBar
         ? { p: snap.dailyBar.c, t: snap.dailyBar.t }
         : null;
-    if (src?.p) out[s] = { price: src.p, date: nyDate(new Date(src.t)) };
+    if (!src?.p) continue;
+    const lq = snap.latestQuote;
+    out[s] = {
+      price: src.p,
+      date: nyDate(new Date(src.t)),
+      time: src.t,
+      ...(lq && lq.ap > 0 && lq.bp > 0 ? { bid: lq.bp, ask: lq.ap } : {}),
+    };
   }
   return out;
 }

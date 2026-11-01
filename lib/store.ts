@@ -34,6 +34,12 @@ export async function loadPositions(): Promise<Position[]> {
   return raw ? (JSON.parse(raw) as Position[]) : [];
 }
 
+/** Keep a copy of each trading day's run, keyed by date (one hash field per day), for later review. */
+export async function saveSnapshot(date: string, snapshot: unknown): Promise<void> {
+  if (!storeConfigured()) return;
+  await redis(["HSET", "snapshots", date, JSON.stringify(snapshot)]);
+}
+
 export async function savePositions(positions: Position[]): Promise<void> {
   await redis(["SET", KEY, JSON.stringify(positions)]);
 }

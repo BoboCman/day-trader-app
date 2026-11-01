@@ -40,8 +40,8 @@ function monthsBefore(d: string, months: number): string {
 
 /**
  * Closes oldest first, last = today, with their dates. 5D counts 5 trading sessions; 1M, 3M and 6M
- * compare with the last close on or before the same date 1, 3 or 6 calendar months earlier, the way
- * Yahoo and Fidelity count them. Without dates, falls back to session counts (21, 63, 126).
+ * compare with the last close before the same date 1, 3 or 6 calendar months earlier, which is how
+ * Yahoo's 1M/3M/6M charts measure their change. Without dates, falls back to session counts (21, 63, 126).
  */
 export function trendStats(closes: number[], dates?: string[]): TrendStats {
   const n = closes.length;
@@ -51,9 +51,11 @@ export function trendStats(closes: number[], dates?: string[]): TrendStats {
   const baseIdx = (months: number, sessions: number): number | null => {
     if (!dates || dates.length !== n) return n > sessions ? n - 1 - sessions : null;
     const cutoff = monthsBefore(dates[n - 1], months);
-    if (dates[0] > cutoff) return null; // not enough history
+    // Like Yahoo: the window starts on the same date a month earlier, and the change is measured
+    // from the close before that day (as 5D is measured from the close before the 5 sessions).
+    if (dates[0] >= cutoff) return null; // not enough history
     let i = n - 1;
-    while (i > 0 && dates[i] > cutoff) i--;
+    while (i > 0 && dates[i] >= cutoff) i--;
     return i;
   };
   const at = (months: number, sessions: number) => {

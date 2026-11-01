@@ -11,6 +11,28 @@ export const maxDuration = 60;
 const COST_PCT_PER_SIDE = 0.1;
 const START = "2016-01-01";
 
+const SPLIT = "2021-07-01";
+
+/**
+ * Does a finding hold in both halves of the data? Current entry rule vs "both signals agree",
+ * at three stop settings, for each half and the full period. Portfolio view, one trade at a time.
+ */
+function robustness(rows: Parameters<typeof replayPortfolio>[0], stop: number) {
+  const out: { entry: string; stop: string; period: string; trades: number; winRatePct: number;
+    expectancyPct: number; profitFactor: number | null; maxDrawdownPct: number }[] = [];
+  for (const requireBoth of [false, true]) {
+    for (const s of [...new Set<number | null>([10, stop, null])]) {
+      for (const [period, from, to] of [["2016-2021", undefined, SPLIT], ["2021-2026", SPLIT, undefined], ["Full", undefined, undefined]] as const) {
+        const r = summarize(replayPortfolio(rows, { stopLossPct: s, costPctPerSide: COST_PCT_PER_SIDE, requireBoth, from, to }));
+        out.push({ entry: requireBoth ? "Both signals" : "Either (current)", stop: s === null ? "none" : `${s}%`, period,
+          trades: r.trades, winRatePct: r.winRatePct, expectancyPct: r.expectancyPct, profitFactor: r.profitFactor,
+          maxDrawdownPct: r.maxDrawdownPct });
+      }
+    }
+  }
+  return out;
+}
+
 export async function GET(req: Request) {
   if (!authorized(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   try {
@@ -41,6 +63,7 @@ export async function GET(req: Request) {
       stopComparison: Object.fromEntries(
         [...new Set([10, stop, 30]), null].map((s) => [s === null ? "none" : `${s}%`, summarize(replayPortfolio(rows, opt(s)))]),
       ),
+      robustness: robustness(rows, stop),
       recentTrades: portfolio.slice(-15).reverse(),
     });
   } catch (err) {

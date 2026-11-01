@@ -27,7 +27,17 @@ export interface Trade {
 export interface ReplayOptions {
   stopLossPct: number | null;
   costPctPerSide: number;
+  /** Variant for comparison: only buy when RSI(2) < 10 AND a 7-day low on the same day */
+  requireBoth?: boolean;
+  /** Only take entries on or after / before these dates (YYYY-MM-DD) */
+  from?: string;
+  to?: string;
 }
+
+type Sig = NonNullable<ReturnType<typeof evaluate>>;
+const isEntry = (s: Sig | null, date: string, opt: ReplayOptions) =>
+  !!s && s.action === "BUY" && (!opt.requireBoth || (s.rsi2Entry && s.double7Entry)) &&
+  (!opt.from || date >= opt.from) && (!opt.to || date < opt.to);
 
 interface Aligned {
   date: string;
@@ -62,8 +72,7 @@ export function replayFund(fund: string, rows: Aligned[], opt: ReplayOptions): T
   const trades: Trade[] = [];
   let i = 0;
   while (i < rows.length) {
-    const s = sig[i];
-    if (!s || s.action !== "BUY") { i++; continue; }
+    if (!isEntry(sig[i], rows[i].date, opt)) { i++; continue; }
     const t = runTrade(fund, rows, sig, i, opt);
     trades.push(t.trade);
     i = t.exitIndex + 1;
@@ -120,7 +129,7 @@ export function replayPortfolio(byFund: Record<string, Aligned[]>, opt: ReplayOp
     const cands = funds.flatMap((f) => {
       const i = idx[f].get(d);
       const s = i === undefined ? null : sigs[f][i];
-      return s && s.action === "BUY" ? [{ f, i: i!, s }] : [];
+      return s && isEntry(s, d, opt) ? [{ f, i: i!, s }] : [];
     });
     if (!cands.length) continue;
     cands.sort((a, b) => a.s.rsi2 - b.s.rsi2 || b.s.pctFromSma200 - a.s.pctFromSma200);

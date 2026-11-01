@@ -40,7 +40,7 @@ Any caution flag (fear spiking, narrow drop, single-stock shock, news, or an eve
 
 Rule parameters live in `lib/config.ts`.
 
-**Replay.** `/replay` (unlock with your key) runs today's exact rules on daily data since 2016 and shows win rate, average win and loss, stop-outs and drawdown, overall, per fund, per entry signal, and with other stop distances for comparison. A robustness table repeats stops of 5%, 7.5%, 10%, 20% and none in each half of the data, filling at the signal-day close (optimistic) and at the next session's open (no look-ahead). It also shows how far winning trades dipped before recovering, which tells you how many winners a tighter stop would have cut. It is a one-time sanity check of the payoff shape, not a tuning tool.
+**Replay.** `/replay` (unlock with your key) runs today's exact rules on daily data since 2016 and shows win rate, average win and loss, stop-outs and drawdown, overall, per fund, per entry signal, and with other stop distances for comparison. A robustness table repeats stops of 5%, 7.5%, 10%, 20% and none in each half of the data, filling at the signal-day close (optimistic) and at the next session's open (no look-ahead). It also shows how far winning trades dipped before recovering, which tells you how many winners a tighter stop would have cut. A profit-target table tests a GTC sell limit 3%, 5% or 8% above entry, placed with the stop as a One-Cancels-the-Other order, against rules-only exits. The email shows those target prices on each buy ticket and open position as an optional step. It is a one-time sanity check of the payoff shape, not a tuning tool.
 
 ## Setup (one time)
 

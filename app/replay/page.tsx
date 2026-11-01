@@ -14,6 +14,7 @@ interface Result {
   portfolio: Summary; perFund: Record<string, Summary>; byEntryRule: Record<string, Summary>;
   stopComparison: Record<string, Summary>; recentTrades: Trade[];
   robustness?: { fill: string; stop: string; period: string; trades: number; winRatePct: number; expectancyPct: number; profitFactor: number | null; maxDrawdownPct: number; stopOuts: number; winnersPastMinus5Pct: number }[];
+  targets?: { fill: string; target: string; period: string; trades: number; winRatePct: number; avgWinPct: number; expectancyPct: number; profitFactor: number | null; maxDrawdownPct: number; targetHits: number; stopOuts: number }[];
   winnersDippedNoStop?: { avgMaePct: number; pastMinus5Pct: number; pastMinus7_5Pct: number; pastMinus10Pct: number };
 }
 
@@ -102,6 +103,25 @@ export default function ReplayPage() {
                     <td style={{ ...td, textAlign: "left" }}>{r.fill}</td><td style={td}>{r.stop}</td><td style={td}>{r.period}</td><td style={td}>{r.trades}</td>
                     <td style={td}>{r.winRatePct}%</td><td style={{ ...td, color: tone(r.expectancyPct), fontWeight: 600 }}>{pct(r.expectancyPct)}</td>
                     <td style={td}>{r.profitFactor ?? "n/a"}</td><td style={td}>{r.stopOuts}</td><td style={{ ...td, color: "#c0392b" }}>{pct(r.maxDrawdownPct)}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          )}
+          {data.targets && (
+            <div style={box}>
+              <h2 style={{ fontSize: 16, marginTop: 0 }}>Profit targets (sell limit with your {data.stopLossPct}% stop, one cancels the other)</h2>
+              <table style={{ borderCollapse: "collapse", width: "100%" }}>
+                <thead><tr>
+                  <th style={{ ...th, textAlign: "left" }}>Fill</th><th style={th}>Target</th><th style={th}>Period</th><th style={th}>Trades</th>
+                  <th style={th}>Win rate</th><th style={th}>Avg win</th><th style={th}>Per trade</th><th style={th}>Profit factor</th>
+                  <th style={th}>Target hits</th><th style={th}>Stop-outs</th><th style={th}>Max drawdown</th>
+                </tr></thead>
+                <tbody>{data.targets.map((r) => (
+                  <tr key={r.fill + r.target + r.period}>
+                    <td style={{ ...td, textAlign: "left" }}>{r.fill}</td><td style={td}>{r.target}</td><td style={td}>{r.period}</td><td style={td}>{r.trades}</td>
+                    <td style={td}>{r.winRatePct}%</td><td style={td}>{pct(r.avgWinPct)}</td><td style={{ ...td, color: tone(r.expectancyPct), fontWeight: 600 }}>{pct(r.expectancyPct)}</td>
+                    <td style={td}>{r.profitFactor ?? "n/a"}</td><td style={td}>{r.targetHits}</td><td style={td}>{r.stopOuts}</td><td style={{ ...td, color: "#c0392b" }}>{pct(r.maxDrawdownPct)}</td>
                   </tr>
                 ))}</tbody>
               </table>

@@ -7,20 +7,22 @@
  *   next session's open, which removes the look-ahead of knowing the close), minus a cost per side.
  * - The stop is a GTC sell stop: if the fund's low reaches it, the fill is the stop price,
  *   or the open if the fund gaps below it.
+ * - An optional profit target is a GTC sell limit placed with the stop (OCO): it fills at the target,
+ *   or at the open if the fund gaps above it. If both are touched in one session, the stop is assumed first.
  * - Each fund trades on its own (one lot at a time per fund); the portfolio view takes only one
  *   trade at a time across all funds, picking the lowest RSI(2), like the live top pick.
  */
 import { RULES } from "./config";
 import { evaluate } from "./signals";
 
-export interface DayBar { t: string; o: number; l: number; c: number }
+export interface DayBar { t: string; o: number; h?: number; l: number; c: number }
 
 export interface Trade {
   fund: string;
   entryDate: string;
   exitDate: string;
   entryRule: "RSI2" | "DOUBLE7" | "BOTH";
-  exitReason: "rsi2 exit" | "double7 exit" | "time stop" | "stop loss" | "end of data";
+  exitReason: "rsi2 exit" | "double7 exit" | "time stop" | "stop loss" | "profit target" | "end of data";
   days: number;
   returnPct: number;
   /** Worst point (fund low) between entry and exit, vs entry, in % */
@@ -32,6 +34,8 @@ export interface ReplayOptions {
   costPctPerSide: number;
   /** Variant for comparison: only buy when RSI(2) < 10 AND a 7-day low on the same day */
   requireBoth?: boolean;
+  /** Optional GTC sell limit this % above entry (an OCO with the stop). Fills at the target, or the open on a gap above it. */
+  targetPct?: number | null;
   /** "close" (default): fill at the signal day's close. "nextOpen": fill at the next session's open. */
   fill?: "close" | "nextOpen";
   /** Only take entries on or after / before these dates (YYYY-MM-DD) */
@@ -100,6 +104,7 @@ function runTrade(
   const entryIdx = nextOpen ? Math.min(i + 1, last) : i;
   const entry = nextOpen ? rows[entryIdx].fund.o : rows[i].fund.c;
   const stop = opt.stopLossPct ? entry * (1 - opt.stopLossPct / 100) : null;
+  const target = opt.targetPct ? entry * (1 + opt.targetPct / 100) : null;
   let low = entry;
 
   const mk = (px: number, exitIdx: number, exitReason: Trade["exitReason"]): Trade => {
@@ -116,6 +121,12 @@ function runTrade(
     const b = rows[j].fund;
     if (stop !== null && b.l <= stop) {
       return { trade: mk(Math.min(stop, b.o), j, "stop loss"), exitIndex: j };
+    }
+    // If the stop and the target are both touched in one session we can't tell which came first,
+    // so the stop wins (the conservative assumption).
+    if (target !== null && b.h !== undefined && b.h >= target) {
+      low = Math.min(low, b.l);
+      return { trade: mk(Math.max(target, b.o), j, "profit target"), exitIndex: j };
     }
     low = Math.min(low, b.l);
     if (j === i) continue; // signal day of a next-open entry: no exit decisions yet
@@ -196,7 +207,7 @@ export function summarize(trades: Trade[]) {
     },
     exits: {
       rsi2: count("rsi2 exit"), double7: count("double7 exit"), timeStop: count("time stop"),
-      stopLoss: count("stop loss"), open: count("end of data"),
+      stopLoss: count("stop loss"), target: count("profit target"), open: count("end of data"),
     },
   };
 }

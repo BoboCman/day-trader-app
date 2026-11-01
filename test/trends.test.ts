@@ -41,3 +41,22 @@ describe("stanceFor", () => {
     expect(stanceFor(buy, trendStats(falling), "XLF").reason).toMatch(/negative/);
   });
 });
+
+describe("calendar-month windows", () => {
+  it("1M compares with the last close on or before the same date a month earlier", () => {
+    // Weekday closes from 2026-08-03 to 2026-10-30, each day +1 so the base close is identifiable.
+    const dates: string[] = [], closes: number[] = [];
+    for (let t = Date.UTC(2026, 6, 1); t <= Date.UTC(2026, 9, 30); t += 86_400_000) {
+      const d = new Date(t);
+      if (d.getUTCDay() === 0 || d.getUTCDay() === 6) continue;
+      dates.push(d.toISOString().slice(0, 10));
+      closes.push(100 + closes.length);
+    }
+    const t = trendStats(closes, dates);
+    const base = closes[dates.indexOf("2026-09-30")];
+    expect(t.m1).toBeCloseTo((closes.at(-1)! / base - 1) * 100, 2);
+    const base3 = closes[dates.indexOf("2026-07-30")];
+    expect(t.m3).toBeCloseTo((closes.at(-1)! / base3 - 1) * 100, 2);
+    expect(t.m6).toBeNull(); // not enough history
+  });
+});

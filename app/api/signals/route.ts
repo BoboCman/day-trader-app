@@ -106,8 +106,8 @@ export async function GET(req: Request) {
         context: { breadth: b, news: flags, caution },
         quality: priceQuality(live[w.fund], liveQuote, now, clock.is_open),
         trend: (() => {
-          const index = trendStats(closes);
-          const fund = trendStats(fundSeries.closes);
+          const index = trendStats(closes, dates);
+          const fund = trendStats(fundSeries.closes, fundSeries.dates);
           return { index, fund, asOf: fundSeries.dates.at(-1) ?? null, ...stanceFor(signal, index, w.underlying) };
         })(),
       };

@@ -7,7 +7,7 @@ import type { UnderlyingEval } from "./signals";
 
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
-/** Windows in trading sessions: 1 week, ~1 month, ~3 months, ~6 months. */
+/** Session counts: 5D always; the month windows only when no dates are given. */
 export const TREND_WINDOWS = { d5: 5, m1: 21, m3: 63, m6: 126 } as const;
 
 export const STANCE_RULES = {
@@ -27,17 +27,44 @@ export interface TrendStats {
   offHigh3m: number | null;
 }
 
-/** Closes oldest first, last = today. */
-export function trendStats(closes: number[]): TrendStats {
+/** Date (YYYY-MM-DD) `months` calendar months before `d`, clamped to month end (Mar 31 -> Feb 28). */
+function monthsBefore(d: string, months: number): string {
+  const [y, m, day] = d.split("-").map(Number);
+  const target = new Date(Date.UTC(y, m - 1 - months, 1));
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(day, lastDay));
+  return target.toISOString().slice(0, 10);
+}
+
+/**
+ * Closes oldest first, last = today, with their dates. 5D counts 5 trading sessions; 1M, 3M and 6M
+ * compare with the last close on or before the same date 1, 3 or 6 calendar months earlier, the way
+ * Yahoo and Fidelity count them. Without dates, falls back to session counts (21, 63, 126).
+ */
+export function trendStats(closes: number[], dates?: string[]): TrendStats {
   const n = closes.length;
   const last = closes[n - 1];
-  const ret = (k: number) => (n > k ? r2((last / closes[n - 1 - k] - 1) * 100) : null);
-  const hi = n >= TREND_WINDOWS.m3 ? Math.max(...closes.slice(-TREND_WINDOWS.m3)) : null;
+  const pctVs = (base: number | undefined) => (base ? r2((last / base - 1) * 100) : null);
+  const ret = (k: number) => (n > k ? pctVs(closes[n - 1 - k]) : null);
+  const baseIdx = (months: number, sessions: number): number | null => {
+    if (!dates || dates.length !== n) return n > sessions ? n - 1 - sessions : null;
+    const cutoff = monthsBefore(dates[n - 1], months);
+    if (dates[0] > cutoff) return null; // not enough history
+    let i = n - 1;
+    while (i > 0 && dates[i] > cutoff) i--;
+    return i;
+  };
+  const at = (months: number, sessions: number) => {
+    const i = baseIdx(months, sessions);
+    return i === null ? null : pctVs(closes[i]);
+  };
+  const i3 = baseIdx(3, TREND_WINDOWS.m3);
+  const hi = i3 === null ? null : Math.max(...closes.slice(i3 + 1));
   return {
     d5: ret(TREND_WINDOWS.d5),
-    m1: ret(TREND_WINDOWS.m1),
-    m3: ret(TREND_WINDOWS.m3),
-    m6: ret(TREND_WINDOWS.m6),
+    m1: at(1, TREND_WINDOWS.m1),
+    m3: at(3, TREND_WINDOWS.m3),
+    m6: at(6, TREND_WINDOWS.m6),
     offHigh3m: hi ? r2((last / hi - 1) * 100) : null,
   };
 }

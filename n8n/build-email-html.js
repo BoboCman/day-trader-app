@@ -338,7 +338,7 @@ const html = `<!doctype html>
       <tr>${th('Fund / index')}${th('5D', 'right')}${th('1M', 'right')}${th('3M', 'right')}${th('6M', 'right')}${th('Off 3M high', 'right')}</tr>
       ${trendRows}
     </table>
-    <div style="font-size:11px;color:${C.sub};padding:6px 4px 0 4px;">Fund in bold, its index beneath. Periods count trading sessions: 5D = 5, 1M = 21, 3M = 63, 6M = 126, ending at the latest close (live price during market hours), dividend-adjusted. Watch and Pass are context only: only a Buy gets an order ticket.</div>
+    <div style="font-size:11px;color:${C.sub};padding:6px 4px 0 4px;">Fund in bold, its index beneath. 5D = 5 trading sessions; 1M, 3M and 6M are calendar months, as on Yahoo. Ends at the latest close (live price during market hours), dividend-adjusted. Watch and Pass are context only: only a Buy gets an order ticket.</div>
   </td></tr>` : ''}
 
   ${ai.backdrop ? `${section('Market backdrop')}

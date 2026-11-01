@@ -251,6 +251,40 @@ export async function GET(req: Request) {
           `sessions or if the fund is down ${risk.stopLossPct}% from entry.`,
       },
       results,
+      // Compact input for the AI prose step: only what the prompt may mention. Sending the whole
+      // body (trend tables, sizing, rules text) made the prompt long enough to crowd out the answer.
+      aiBrief: {
+        date: today,
+        marketOpen: clock.is_open,
+        topPick,
+        fear: fear ? { regime: fear.regime, pctVs20d: fear.pctVs20d, dayChangePct: fear.dayChangePct } : null,
+        events,
+        positions: held.map((h) =>
+          "action" in h
+            ? { fund: h.fund, day: h.day, maxDays: h.maxDays, action: h.action, pnlPct: h.pnlPct, reasons: h.reasons }
+            : { fund: h.fund, error: h.error },
+        ),
+        funds: results.map((r) =>
+          "error" in r
+            ? { fund: r.fund, error: r.error }
+            : {
+                fund: r.fund,
+                index: r.underlying,
+                action: r.signal.action,
+                rsi2: r.signal.rsi2,
+                dayChangePct: r.signal.dayChangePct,
+                pctFromSma200: r.signal.pctFromSma200,
+                reasons: r.signal.reasons,
+                caution: r.context.caution.reasons,
+                breadth: `${r.context.breadth.down} of ${r.context.breadth.total} top holdings down (${r.context.breadth.kind})`,
+                headlines: r.context.news.slice(0, 3).map((n) => `${n.symbol}: ${n.headline}`),
+                stance: r.trend.stance,
+                stanceReason: r.trend.reason,
+                trigger: r.trend.trigger ?? null,
+                indexTrend: { d5: r.trend.index.d5, m1: r.trend.index.m1, m3: r.trend.index.m3, m6: r.trend.index.m6 },
+              },
+        ),
+      },
     };
     // Daily record for the scorecard and later review; best-effort.
     if (clock.is_open) await saveSnapshot(today, body).catch(() => undefined);

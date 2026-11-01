@@ -63,3 +63,16 @@ describe("replay fills and MAE", () => {
     expect(s.winnersDipped.pastMinus10Pct).toBeLessThanOrEqual(s.winnersDipped.pastMinus5Pct);
   });
 });
+
+describe("profit target", () => {
+  it("sells at the target when the fund's high reaches it, before the rule exit", () => {
+    const { under, fund } = series();
+    const withHigh = fund.map((b) => ({ ...b, h: b.c * 1.2 })); // every day trades 20% above the close
+    const rows = align(under, withHigh);
+    const t = replayFund("TECL", rows, { stopLossPct: null, targetPct: 5, costPctPerSide: 0 })[0];
+    expect(t.exitReason).toBe("profit target");
+    expect(t.returnPct).toBeCloseTo(5, 1);
+    const none = replayFund("TECL", rows, { stopLossPct: null, targetPct: 50, costPctPerSide: 0 })[0];
+    expect(none.exitReason).not.toBe("profit target");
+  });
+});

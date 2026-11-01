@@ -35,6 +35,26 @@ function robustness(rows: Parameters<typeof replayPortfolio>[0]) {
   return out;
 }
 
+/**
+ * Profit targets as an OCO with the current stop: a GTC sell limit 3, 5 or 8% above entry, or none
+ * (rules-only exits). Both fills, each half and the full period. Portfolio view.
+ */
+function targets(rows: Parameters<typeof replayPortfolio>[0], stop: number) {
+  const out: { fill: string; target: string; period: string; trades: number; winRatePct: number; avgWinPct: number;
+    expectancyPct: number; profitFactor: number | null; maxDrawdownPct: number; targetHits: number; stopOuts: number }[] = [];
+  for (const fill of ["close", "nextOpen"] as const) {
+    for (const t of [3, 5, 8, null]) {
+      for (const [period, from, to] of [["2016-2021", undefined, SPLIT], ["2021-2026", SPLIT, undefined], ["Full", undefined, undefined]] as const) {
+        const r = summarize(replayPortfolio(rows, { stopLossPct: stop, targetPct: t, costPctPerSide: COST_PCT_PER_SIDE, fill, from, to }));
+        out.push({ fill: fill === "close" ? "Same close" : "Next open", target: t === null ? "none" : `+${t}%`, period,
+          trades: r.trades, winRatePct: r.winRatePct, avgWinPct: r.avgWinPct, expectancyPct: r.expectancyPct,
+          profitFactor: r.profitFactor, maxDrawdownPct: r.maxDrawdownPct, targetHits: r.exits.target, stopOuts: r.exits.stopLoss });
+      }
+    }
+  }
+  return out;
+}
+
 export async function GET(req: Request) {
   if (!authorized(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   try {
@@ -55,6 +75,7 @@ export async function GET(req: Request) {
         "Current rules exactly as live, no tuning; signals on the underlying's daily close (live uses 3:40 PM).",
         "Main tables: buys and rule-based sells fill at the 3x fund's close that day (optimistic: it knows the close). The robustness table also shows next-open fills, which don't.",
         `Stop is a GTC sell stop ${stop}% below entry: fills at the stop, or at the open on a gap below it.`,
+        "Profit-target table: a GTC sell limit 3, 5 or 8% above entry placed with the stop (OCO). It fills at the target, or the open on a gap above it; if both are touched in one day the stop is assumed first.",
         `Cost ${COST_PCT_PER_SIDE}% per side for spread and slippage. No caution-flag halving (no historical news).`,
         "Past results don't predict future ones; this checks whether the rules' payoff shape is plausible.",
       ],
@@ -66,6 +87,7 @@ export async function GET(req: Request) {
         [...new Set([5, 7.5, 10, stop, 30]), null].map((s) => [s === null ? "none" : `${s}%`, summarize(replayPortfolio(rows, opt(s)))]),
       ),
       robustness: robustness(rows),
+      targets: targets(rows, stop),
       winnersDippedNoStop: summarize(replayPortfolio(rows, opt(null))).winnersDipped,
       recentTrades: portfolio.slice(-15).reverse(),
     });

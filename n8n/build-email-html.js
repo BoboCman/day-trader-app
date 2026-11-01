@@ -74,6 +74,16 @@ const ticket = (steps) => `
     </td></tr>
   </table>`;
 
+// Profit-target limit prices (+3/+5/+8%) for the optional OCO sell.
+const TARGETS = [3, 5, 8];
+const targetPx = (base, t) => Math.round(base * (1 + t / 100) * 100) / 100;
+const targetList = (base) => TARGETS.map((t) => `+${t}% <b>${money(targetPx(base, t))}</b>`).join(' · ');
+// For an open lot: a limit below the current price would fill at once, so flag targets already passed.
+const heldTargets = (p) => TARGETS.map((t) => {
+  const px = targetPx(p.entryPrice, t);
+  return px <= p.price ? `<span style="color:${C.sub};">+${t}% ${money(px)} (already above)</span>` : `+${t}% <b>${money(px)}</b>`;
+}).join(' · ');
+
 const positionCard = (p) => {
   if (p.error) return `<tr><td style="padding:0 0 10px 0;font-size:13px;color:${C.red};">${esc(p.fund)}: ${esc(p.error)}</td></tr>`;
   const sell = p.action === 'SELL_TODAY';
@@ -100,11 +110,12 @@ const positionCard = (p) => {
         </tr></table>
         ${sell
           ? `<div style="font-size:13px;color:${C.ink};padding-top:10px;">${esc(p.reasons.join('. '))}.</div>` + ticket([
-              `<b>Cancel your GTC stop</b> on ${esc(p.fund)} first`,
+              `<b>Cancel your GTC stop</b> (or One-Cancels-the-Other order) on ${esc(p.fund)} first`,
               `<b>Sell ${p.shares} ${esc(p.fund)}</b> · limit <b>${money(limit)}</b> · day order · place 3:45-3:55 PM ET`,
               `Mark it sold${appUrl ? ` at <a href="${esc(appUrl)}/positions" style="color:${C.brand};">${esc(appUrl.replace(/^https?:\/\//, ''))}/positions</a>` : ' on the positions page'}`,
             ])
-          : `<div style="font-size:13px;color:${C.sub};padding-top:10px;">No exit rule met. Keep holding; your stop stays in place.</div>`}
+          : `<div style="font-size:13px;color:${C.sub};padding-top:10px;">No exit rule met. Keep holding; your stop stays in place.</div>
+             <div style="font-size:13px;color:${C.ink};padding-top:6px;">Optional profit targets from your ${money(p.entryPrice)} fill: ${heldTargets(p)}. Use one as the limit side of a One-Cancels-the-Other order with your ${money(p.stopPrice)} stop.</div>`}
       </td></tr>
     </table>
   </td></tr>`;
@@ -172,6 +183,7 @@ const buyCard = (r) => {
           ...(o.fullShares === 0 ? [`<b>Wait until your sell fills</b>, then mark it sold`] : []),
           `<b>Buy ${n} ${esc(r.fund)}</b> · limit <b>${money(o.suggestedLimit)}</b> · day order · place 3:45-3:55 PM ET`,
           `Once filled: <b>sell stop ${n} sh at ${money(o.stopPrice ?? o.suggestedLimit * (1 - (o.stopLossPct ?? 25) / 100))}</b> · good 'til canceled (${o.stopLossPct ?? 25}% stop)`,
+          `Optional profit target: make it a <b>One-Cancels-the-Other</b> order (Fidelity conditional orders) with a GTC sell limit at ${targetList(o.suggestedLimit)}. Prices assume a fill at the limit; recompute from your fill. Untested until the replay says so; stop only follows the tested rules`,
           `Log the fill${appUrl ? ` at <a href="${esc(logUrl(r, o, n))}" style="color:${C.brand};">${esc(appUrl.replace(/^https?:\/\//, ''))}/positions</a> (pre-filled)` : ' on the positions page'} so tomorrow's email tracks it`,
         ]))(o.fullShares || o.afterSells.fullShares) : ''}
       </td></tr>

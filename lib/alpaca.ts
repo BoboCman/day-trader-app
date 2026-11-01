@@ -122,13 +122,13 @@ export function nyDate(d: Date): string {
   return d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 }
 
-/** Daily open/low/close bars from `start` (YYYY-MM-DD) to yesterday, split/dividend adjusted. Used by the replay. */
+/** Daily open/high/low/close bars from `start` (YYYY-MM-DD) to yesterday, split/dividend adjusted. Used by the replay. */
 export async function dailyBars(
   symbols: string[],
   start: string,
   todayNy: string,
-): Promise<Record<string, { t: string; o: number; l: number; c: number }[]>> {
-  const out: Record<string, { t: string; o: number; l: number; c: number }[]> = {};
+): Promise<Record<string, { t: string; o: number; h: number; l: number; c: number }[]>> {
+  const out: Record<string, { t: string; o: number; h: number; l: number; c: number }[]> = {};
   let pageToken: string | undefined;
   do {
     const q = new URLSearchParams({
@@ -137,11 +137,11 @@ export async function dailyBars(
       adjustment: "all", feed: "sip", limit: "10000",
     });
     if (pageToken) q.set("page_token", pageToken);
-    const body = await get<{ bars: Record<string, { t: string; o: number; l: number; c: number }[]>; next_page_token?: string }>(
+    const body = await get<{ bars: Record<string, { t: string; o: number; h: number; l: number; c: number }[]>; next_page_token?: string }>(
       `${DATA}/v2/stocks/bars?${q}`,
     );
     for (const [s, bars] of Object.entries(body.bars ?? {})) {
-      (out[s] ??= []).push(...bars.map((b) => ({ t: nyDate(new Date(b.t)), o: b.o, l: b.l, c: b.c })));
+      (out[s] ??= []).push(...bars.map((b) => ({ t: nyDate(new Date(b.t)), o: b.o, h: b.h, l: b.l, c: b.c })));
     }
     pageToken = body.next_page_token ?? undefined;
   } while (pageToken);

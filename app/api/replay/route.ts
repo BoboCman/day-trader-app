@@ -14,19 +14,21 @@ const START = "2016-01-01";
 const SPLIT = "2021-07-01";
 
 /**
- * Does a finding hold in both halves of the data? Current entry rule vs "both signals agree",
- * at three stop settings, for each half and the full period. Portfolio view, one trade at a time.
+ * Does a finding hold in both halves of the data, and under pessimistic fills?
+ * Current entry rule; stops of 5, 7.5, 10, 20% and none; fills at the signal-day close (optimistic,
+ * it knows the close) or the next open (no look-ahead); each half and the full period. Portfolio view.
  */
-function robustness(rows: Parameters<typeof replayPortfolio>[0], stop: number) {
-  const out: { entry: string; stop: string; period: string; trades: number; winRatePct: number;
-    expectancyPct: number; profitFactor: number | null; maxDrawdownPct: number }[] = [];
-  for (const requireBoth of [false, true]) {
-    for (const s of [...new Set<number | null>([10, stop, null])]) {
+function robustness(rows: Parameters<typeof replayPortfolio>[0]) {
+  const out: { fill: string; stop: string; period: string; trades: number; winRatePct: number;
+    expectancyPct: number; profitFactor: number | null; maxDrawdownPct: number; stopOuts: number;
+    winnersPastMinus5Pct: number }[] = [];
+  for (const fill of ["close", "nextOpen"] as const) {
+    for (const s of [5, 7.5, 10, 20, null]) {
       for (const [period, from, to] of [["2016-2021", undefined, SPLIT], ["2021-2026", SPLIT, undefined], ["Full", undefined, undefined]] as const) {
-        const r = summarize(replayPortfolio(rows, { stopLossPct: s, costPctPerSide: COST_PCT_PER_SIDE, requireBoth, from, to }));
-        out.push({ entry: requireBoth ? "Both signals" : "Either (current)", stop: s === null ? "none" : `${s}%`, period,
+        const r = summarize(replayPortfolio(rows, { stopLossPct: s, costPctPerSide: COST_PCT_PER_SIDE, fill, from, to }));
+        out.push({ fill: fill === "close" ? "Same close" : "Next open", stop: s === null ? "none" : `${s}%`, period,
           trades: r.trades, winRatePct: r.winRatePct, expectancyPct: r.expectancyPct, profitFactor: r.profitFactor,
-          maxDrawdownPct: r.maxDrawdownPct });
+          maxDrawdownPct: r.maxDrawdownPct, stopOuts: r.exits.stopLoss, winnersPastMinus5Pct: r.winnersDipped.pastMinus5Pct });
       }
     }
   }
@@ -51,7 +53,7 @@ export async function GET(req: Request) {
       period: { from: rows[WATCHLIST[0].fund][200]?.date ?? START, to: rows[WATCHLIST[0].fund].at(-1)?.date },
       assumptions: [
         "Current rules exactly as live, no tuning; signals on the underlying's daily close (live uses 3:40 PM).",
-        "Buys and rule-based sells fill at the 3x fund's close that day.",
+        "Main tables: buys and rule-based sells fill at the 3x fund's close that day (optimistic: it knows the close). The robustness table also shows next-open fills, which don't.",
         `Stop is a GTC sell stop ${stop}% below entry: fills at the stop, or at the open on a gap below it.`,
         `Cost ${COST_PCT_PER_SIDE}% per side for spread and slippage. No caution-flag halving (no historical news).`,
         "Past results don't predict future ones; this checks whether the rules' payoff shape is plausible.",
@@ -61,9 +63,10 @@ export async function GET(req: Request) {
       perFund: Object.fromEntries(Object.entries(perFund).map(([f, t]) => [f, summarize(t)])),
       byEntryRule: { RSI2: byRule("RSI2"), DOUBLE7: byRule("DOUBLE7"), BOTH: byRule("BOTH") },
       stopComparison: Object.fromEntries(
-        [...new Set([10, stop, 30]), null].map((s) => [s === null ? "none" : `${s}%`, summarize(replayPortfolio(rows, opt(s)))]),
+        [...new Set([5, 7.5, 10, stop, 30]), null].map((s) => [s === null ? "none" : `${s}%`, summarize(replayPortfolio(rows, opt(s)))]),
       ),
-      robustness: robustness(rows, stop),
+      robustness: robustness(rows),
+      winnersDippedNoStop: summarize(replayPortfolio(rows, opt(null))).winnersDipped,
       recentTrades: portfolio.slice(-15).reverse(),
     });
   } catch (err) {

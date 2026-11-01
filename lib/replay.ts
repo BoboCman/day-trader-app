@@ -3,7 +3,8 @@
  *
  * Assumptions (stated in the output too):
  * - Signals use the underlying's daily close (the live app uses the 3:40 PM price).
- * - Entries and rule exits fill at the 3x fund's close that day, minus a cost per side.
+ * - Entries and rule exits fill at the 3x fund's close that day (or, with fill "nextOpen", at the
+ *   next session's open, which removes the look-ahead of knowing the close), minus a cost per side.
  * - The stop is a GTC sell stop: if the fund's low reaches it, the fill is the stop price,
  *   or the open if the fund gaps below it.
  * - Each fund trades on its own (one lot at a time per fund); the portfolio view takes only one
@@ -22,6 +23,8 @@ export interface Trade {
   exitReason: "rsi2 exit" | "double7 exit" | "time stop" | "stop loss" | "end of data";
   days: number;
   returnPct: number;
+  /** Worst point (fund low) between entry and exit, vs entry, in % */
+  maePct: number;
 }
 
 export interface ReplayOptions {
@@ -29,6 +32,8 @@ export interface ReplayOptions {
   costPctPerSide: number;
   /** Variant for comparison: only buy when RSI(2) < 10 AND a 7-day low on the same day */
   requireBoth?: boolean;
+  /** "close" (default): fill at the signal day's close. "nextOpen": fill at the next session's open. */
+  fill?: "close" | "nextOpen";
   /** Only take entries on or after / before these dates (YYYY-MM-DD) */
   from?: string;
   to?: string;
@@ -88,32 +93,43 @@ function runTrade(
   opt: ReplayOptions,
 ): { trade: Trade; exitIndex: number } {
   const s = sig[i]!;
-  const entry = rows[i].fund.c;
-  const stop = opt.stopLossPct ? entry * (1 - opt.stopLossPct / 100) : null;
+  const nextOpen = opt.fill === "nextOpen";
+  const last = rows.length - 1;
   const entryRule = s.rsi2Entry && s.double7Entry ? "BOTH" : s.rsi2Entry ? "RSI2" : "DOUBLE7";
-  for (let j = i + 1; j < rows.length; j++) {
-    const b = rows[j].fund;
-    const days = j - i;
-    if (stop !== null && b.l <= stop) {
-      return { trade: mk(Math.min(stop, b.o), "stop loss"), exitIndex: j };
-    }
-    const e = sig[j]!;
-    if (e.rsi2Exit) return { trade: mk(b.c, "rsi2 exit"), exitIndex: j };
-    if (e.double7Exit) return { trade: mk(b.c, "double7 exit"), exitIndex: j };
-    if (days >= RULES.timeStopSessions) return { trade: mk(b.c, "time stop"), exitIndex: j };
+  // "close": buy at the signal day's close. "nextOpen": buy at the next session's open (no look-ahead).
+  const entryIdx = nextOpen ? Math.min(i + 1, last) : i;
+  const entry = nextOpen ? rows[entryIdx].fund.o : rows[i].fund.c;
+  const stop = opt.stopLossPct ? entry * (1 - opt.stopLossPct / 100) : null;
+  let low = entry;
 
-    function mk(px: number, exitReason: Trade["exitReason"]): Trade {
-      const gross = px / entry - 1;
-      const net = (1 + gross) * (1 - opt.costPctPerSide / 100) / (1 + opt.costPctPerSide / 100) - 1;
-      return { fund, entryDate: rows[i].date, exitDate: rows[j].date, entryRule, exitReason, days, returnPct: r2(net * 100) };
+  const mk = (px: number, exitIdx: number, exitReason: Trade["exitReason"]): Trade => {
+    const gross = px / entry - 1;
+    const net = (1 + gross) * (1 - opt.costPctPerSide / 100) / (1 + opt.costPctPerSide / 100) - 1;
+    return {
+      fund, entryDate: rows[i].date, exitDate: rows[exitIdx].date, entryRule, exitReason,
+      days: exitIdx - i, returnPct: r2(net * 100), maePct: r2((Math.min(low, px) / entry - 1) * 100),
+    };
+  };
+
+  // With next-open fills the stop is live from the entry session itself (bought at its open).
+  for (let j = nextOpen ? entryIdx : i + 1; j <= last; j++) {
+    const b = rows[j].fund;
+    if (stop !== null && b.l <= stop) {
+      return { trade: mk(Math.min(stop, b.o), j, "stop loss"), exitIndex: j };
+    }
+    low = Math.min(low, b.l);
+    if (j === i) continue; // signal day of a next-open entry: no exit decisions yet
+    const e = sig[j]!;
+    const reason: Trade["exitReason"] | null =
+      e.rsi2Exit ? "rsi2 exit" : e.double7Exit ? "double7 exit" : j - i >= RULES.timeStopSessions ? "time stop" : null;
+    if (reason) {
+      // Exit decided on day j's close: fill at that close, or at the next open.
+      if (!nextOpen) return { trade: mk(b.c, j, reason), exitIndex: j };
+      const k = Math.min(j + 1, last);
+      return { trade: mk(rows[k].fund.o, k, reason), exitIndex: k };
     }
   }
-  const last = rows.length - 1;
-  return {
-    trade: { fund, entryDate: rows[i].date, exitDate: rows[last].date, entryRule, exitReason: "end of data",
-             days: last - i, returnPct: r2((rows[last].fund.c / entry - 1) * 100) },
-    exitIndex: last,
-  };
+  return { trade: { ...mk(rows[last].fund.c, last, "end of data") }, exitIndex: last };
 }
 
 /** One trade at a time across funds; when several signal the same day, lowest RSI(2) wins. */
@@ -171,6 +187,13 @@ export function summarize(trades: Trade[]) {
     /** Compounded, full size every trade: a stress view, not a forecast */
     compoundedReturnPct: r2((equity - 1) * 100),
     maxDrawdownPct: r2(maxDd * 100),
+    /** How far winners dipped before recovering: would a tighter stop have cut them? */
+    winnersDipped: {
+      avgMaePct: wins.length ? r2(wins.reduce((a, t) => a + t.maePct, 0) / wins.length) : 0,
+      pastMinus5Pct: wins.length ? r2((wins.filter((t) => t.maePct <= -5).length / wins.length) * 100) : 0,
+      pastMinus7_5Pct: wins.length ? r2((wins.filter((t) => t.maePct <= -7.5).length / wins.length) * 100) : 0,
+      pastMinus10Pct: wins.length ? r2((wins.filter((t) => t.maePct <= -10).length / wins.length) * 100) : 0,
+    },
     exits: {
       rsi2: count("rsi2 exit"), double7: count("double7 exit"), timeStop: count("time stop"),
       stopLoss: count("stop loss"), open: count("end of data"),

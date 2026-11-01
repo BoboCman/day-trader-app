@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { dailyCloses, latestPrices, marketClock, nyDate, recentNews, type NewsItem, type Quote } from "@/lib/alpaca";
 import { FEAR_PROXY, riskSettings, RULES, TOP_HOLDINGS, WATCHLIST } from "@/lib/config";
 import { breadth, cautionFor, fearGauge, newsFlags, upcomingEvents } from "@/lib/context";
+import { stanceFor, trendStats } from "@/lib/trends";
 import { authorized } from "@/lib/auth";
 import { evaluatePosition, sessionsSince } from "@/lib/positions";
 import { planOrders } from "@/lib/risk";
@@ -57,7 +58,7 @@ export async function GET(req: Request) {
     const holdings = [...new Set(Object.values(TOP_HOLDINGS).flat())];
     // Context data is best-effort: a failure there must never block the core signals.
     const [history, live, positions, holdingBars, holdingLive, news] = await Promise.all([
-      dailyCloses([...underlyings, FEAR_PROXY], today),
+      dailyCloses([...underlyings, ...funds, FEAR_PROXY], today),
       latestPrices([...underlyings, ...funds, FEAR_PROXY]),
       loadPositions().catch(() => null),
       dailyCloses(holdings, today, 10).catch(() => ({}) as Record<string, Bar[]>),
@@ -98,6 +99,11 @@ export async function GET(req: Request) {
         signal,
         context: { breadth: b, news: flags, caution },
         quality: priceQuality(live[w.fund], liveQuote, now, clock.is_open),
+        trend: (() => {
+          const index = trendStats(closes);
+          const fund = trendStats(withLive(history[w.fund] ?? [], live[w.fund]).closes);
+          return { index, fund, ...stanceFor(signal, index, w.underlying) };
+        })(),
       };
     });
 
@@ -185,7 +191,9 @@ export async function GET(req: Request) {
           : `${r.fund} (${r.underlying} ${r.signal.price}, ${r.signal.dayChangePct}% today, ` +
             `${r.signal.pctFromSma200}% vs 200d, RSI2 ${r.signal.rsi2}): ${r.signal.action}` +
             (r.signal.reasons.length ? `. ${r.signal.reasons.join("; ")}` : "") +
-            (r.context.caution.reasons.length ? `. Caution (half size): ${r.context.caution.reasons.join("; ")}` : ""),
+            (r.context.caution.reasons.length ? `. Caution (half size): ${r.context.caution.reasons.join("; ")}` : "") +
+            `. Stance ${r.trend.stance}: ${r.trend.reason}` +
+            ` (${r.underlying} 5D ${r.trend.index.d5}%, 1M ${r.trend.index.m1}%, 3M ${r.trend.index.m3}%, 6M ${r.trend.index.m6}%, ${r.trend.index.offHigh3m}% off 3M high)`,
       )
       .join("\n");
 

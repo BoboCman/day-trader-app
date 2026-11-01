@@ -332,13 +332,13 @@ const html = `<!doctype html>
     </table>
   </td></tr>
 
-  ${trendRows ? `${section('Trends')}
+  ${trendRows ? `${section(`Trends${withTrend[0]?.trend?.asOf ? ` · closes through ${new Date(withTrend[0].trend.asOf + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}` : ''}`)}
   <tr><td style="padding:0 0 14px 0;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.card};border:1px solid ${C.line};border-radius:10px;border-collapse:separate;overflow:hidden;">
       <tr>${th('Fund / index')}${th('5D', 'right')}${th('1M', 'right')}${th('3M', 'right')}${th('6M', 'right')}${th('Off 3M high', 'right')}</tr>
       ${trendRows}
     </table>
-    <div style="font-size:11px;color:${C.sub};padding:6px 4px 0 4px;">Fund in bold, its index beneath. Watch and Pass are context only: only a Buy gets an order ticket.</div>
+    <div style="font-size:11px;color:${C.sub};padding:6px 4px 0 4px;">Fund in bold, its index beneath. Periods count trading sessions: 5D = 5, 1M = 21, 3M = 63, 6M = 126, ending at the latest close (live price during market hours), dividend-adjusted. Watch and Pass are context only: only a Buy gets an order ticket.</div>
   </td></tr>` : ''}
 
   ${ai.backdrop ? `${section('Market backdrop')}

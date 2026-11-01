@@ -8,7 +8,7 @@ import type { UnderlyingEval } from "./signals";
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
 /** Session counts: 5D always; the month windows only when no dates are given. */
-export const TREND_WINDOWS = { d5: 5, m1: 21, m3: 63, m6: 126 } as const;
+export const TREND_WINDOWS = { d5: 5, m1: 21, m3: 63, m6: 126, m12: 252 } as const;
 
 export const STANCE_RULES = {
   /** WATCH: a pullback of at least this much from the 3-month high, while the 3- and 6-month returns are positive */
@@ -23,8 +23,10 @@ export interface TrendStats {
   m1: number | null;
   m3: number | null;
   m6: number | null;
-  /** % below the highest close of the last 63 sessions (0 = at the high) */
+  /** % below the highest close of the last 3 months (0 = at the high) */
   offHigh3m: number | null;
+  /** % below the highest close in each window, same windows as the returns plus 12 months */
+  offHigh: { d5: number | null; m1: number | null; m3: number | null; m6: number | null; m12: number | null };
 }
 
 /** Date (YYYY-MM-DD) `months` calendar months before `d`, clamped to month end (Mar 31 -> Feb 28). */
@@ -58,14 +60,22 @@ export function trendStats(closes: number[], dates?: string[]): TrendStats {
     const i = baseIdx(months, sessions);
     return i === null ? null : pctVs(closes[i]);
   };
-  const i3 = baseIdx(3, TREND_WINDOWS.m3);
-  const hi = i3 === null ? null : Math.max(...closes.slice(i3 + 1));
+  // Highest close from the window's start close through today.
+  const offHighFrom = (i: number | null) => (i === null ? null : r2((last / Math.max(...closes.slice(i)) - 1) * 100));
+  const offHigh = {
+    d5: offHighFrom(n > TREND_WINDOWS.d5 ? n - 1 - TREND_WINDOWS.d5 : null),
+    m1: offHighFrom(baseIdx(1, TREND_WINDOWS.m1)),
+    m3: offHighFrom(baseIdx(3, TREND_WINDOWS.m3)),
+    m6: offHighFrom(baseIdx(6, TREND_WINDOWS.m6)),
+    m12: offHighFrom(baseIdx(12, TREND_WINDOWS.m12)),
+  };
   return {
     d5: ret(TREND_WINDOWS.d5),
     m1: at(1, TREND_WINDOWS.m1),
     m3: at(3, TREND_WINDOWS.m3),
     m6: at(6, TREND_WINDOWS.m6),
-    offHigh3m: hi ? r2((last / hi - 1) * 100) : null,
+    offHigh3m: offHigh.m3,
+    offHigh,
   };
 }
 

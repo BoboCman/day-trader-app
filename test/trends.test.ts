@@ -16,7 +16,8 @@ describe("trendStats", () => {
   });
 
   it("returns nulls when history is short", () => {
-    expect(trendStats([1, 2, 3])).toEqual({ d5: null, m1: null, m3: null, m6: null, offHigh3m: null });
+    expect(trendStats([1, 2, 3])).toEqual({ d5: null, m1: null, m3: null, m6: null, offHigh3m: null,
+      offHigh: { d5: null, m1: null, m3: null, m6: null, m12: null } });
   });
 });
 
@@ -58,5 +59,17 @@ describe("calendar-month windows", () => {
     const base3 = closes[dates.indexOf("2026-07-30")];
     expect(t.m3).toBeCloseTo((closes.at(-1)! / base3 - 1) * 100, 2);
     expect(t.m6).toBeNull(); // not enough history
+  });
+});
+
+describe("off-high windows", () => {
+  it("measures the drop from the highest close in each window", () => {
+    // 300 sessions: rise to 200 at session 150, fall to 150 by session 250, then rise slowly.
+    const closes = Array.from({ length: 300 }, (_, i) => (i <= 150 ? 50 + i : i <= 250 ? 200 - (i - 150) * 0.5 : 150 + (i - 250) * 0.2));
+    const t = trendStats(closes);
+    expect(t.offHigh.d5).toBe(0); // still rising
+    expect(t.offHigh.m12).toBeCloseTo((closes.at(-1)! / 200 - 1) * 100, 1);
+    expect(t.offHigh.m3).toBe(t.offHigh3m);
+    expect(t.offHigh.m12!).toBeLessThanOrEqual(t.offHigh.m6!);
   });
 });

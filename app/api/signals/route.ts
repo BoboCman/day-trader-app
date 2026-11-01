@@ -199,7 +199,7 @@ export async function GET(req: Request) {
             (r.signal.reasons.length ? `. ${r.signal.reasons.join("; ")}` : "") +
             (r.context.caution.reasons.length ? `. Caution (half size): ${r.context.caution.reasons.join("; ")}` : "") +
             `. Stance ${r.trend.stance}: ${r.trend.reason}` +
-            ` (${r.underlying} 5D ${r.trend.index.d5}%, 1M ${r.trend.index.m1}%, 3M ${r.trend.index.m3}%, 6M ${r.trend.index.m6}%, ${r.trend.index.offHigh3m}% off 3M high)`,
+            ` (${r.underlying} 5D ${r.trend.index.d5}%, 1M ${r.trend.index.m1}%, 3M ${r.trend.index.m3}%, 6M ${r.trend.index.m6}%, ${r.trend.index.offHigh3m}% off 3M high, ${r.trend.index.offHigh.m12}% off 12M high)`,
       )
       .join("\n");
 

@@ -36,7 +36,7 @@ Any caution flag (fear spiking, narrow drop, single-stock shock, news, or an eve
 
 **Price checks.** Each fund's live price is flagged if it's more than 10 minutes old or the IEX bid/ask is wider than 1%. These are warnings only.
 
-**Trends and stance.** Each fund and its index get 5-day, 1-month, 3-month and 6-month returns and the distance below the 3-month high. Each fund is labelled BUY (the rules fired), WATCH (index 4%+ off its 3-month high while its 3- and 6-month returns are positive, but no entry yet; the email says what would trigger it), PASS (below the 200-day average, a negative 6-month return, or down more than 5% over 3 months) or nothing. Only BUY ever gets an order ticket; WATCH and PASS are context, and their thresholds (`STANCE_RULES` in `lib/trends.ts`) are untested.
+**Trends and stance.** Each fund and its index get 5-day, 1-month, 3-month and 6-month returns and the distance below the highest close of the last 5 days, 1, 3, 6 and 12 months (1M/3M/6M are calendar months, like Yahoo). Each fund is labelled BUY (the rules fired), WATCH (index 4%+ off its 3-month high while its 3- and 6-month returns are positive, but no entry yet; the email says what would trigger it), PASS (below the 200-day average, a negative 6-month return, or down more than 5% over 3 months) or nothing. Only BUY ever gets an order ticket; WATCH and PASS are context, and their thresholds (`STANCE_RULES` in `lib/trends.ts`) are untested.
 
 Rule parameters live in `lib/config.ts`.
 

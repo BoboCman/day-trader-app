@@ -37,3 +37,15 @@ describe("replay", () => {
     expect(t.returnPct).toBeCloseTo(-40, 0);
   });
 });
+
+describe("replay variants", () => {
+  it("both-signals and date windows only ever remove entries", () => {
+    const { under, fund } = series();
+    const rows = align(under, fund);
+    const all = replayFund("TECL", rows, { stopLossPct: 20, costPctPerSide: 0 });
+    const both = replayFund("TECL", rows, { stopLossPct: 20, costPctPerSide: 0, requireBoth: true });
+    const none = replayFund("TECL", rows, { stopLossPct: 20, costPctPerSide: 0, from: "2099-01-01" });
+    expect(both.length).toBeLessThanOrEqual(all.length);
+    expect(none).toEqual([]);
+  });
+});

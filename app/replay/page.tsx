@@ -13,6 +13,7 @@ interface Result {
   period: { from: string; to: string }; assumptions: string[]; stopLossPct: number;
   portfolio: Summary; perFund: Record<string, Summary>; byEntryRule: Record<string, Summary>;
   stopComparison: Record<string, Summary>; recentTrades: Trade[];
+  robustness?: { entry: string; stop: string; period: string; trades: number; winRatePct: number; expectancyPct: number; profitFactor: number | null; maxDrawdownPct: number }[];
 }
 
 const box: React.CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, marginBottom: 16, background: "#fff", overflowX: "auto" };
@@ -87,6 +88,24 @@ export default function ReplayPage() {
           <div style={box}><h2 style={{ fontSize: 16, marginTop: 0 }}>Each fund on its own</h2><Table rows={Object.entries(data.perFund)} /></div>
           <div style={box}><h2 style={{ fontSize: 16, marginTop: 0 }}>By entry signal (all funds)</h2><Table rows={Object.entries(data.byEntryRule)} /></div>
           <div style={box}><h2 style={{ fontSize: 16, marginTop: 0 }}>Stop distance, for comparison only</h2><Table rows={Object.entries(data.stopComparison)} /></div>
+          {data.robustness && (
+            <div style={box}>
+              <h2 style={{ fontSize: 16, marginTop: 0 }}>Does it hold in both halves?</h2>
+              <table style={{ borderCollapse: "collapse", width: "100%" }}>
+                <thead><tr>
+                  <th style={{ ...th, textAlign: "left" }}>Entry</th><th style={th}>Stop</th><th style={th}>Period</th><th style={th}>Trades</th>
+                  <th style={th}>Win rate</th><th style={th}>Per trade</th><th style={th}>Profit factor</th><th style={th}>Max drawdown</th>
+                </tr></thead>
+                <tbody>{data.robustness.map((r) => (
+                  <tr key={r.entry + r.stop + r.period}>
+                    <td style={{ ...td, textAlign: "left" }}>{r.entry}</td><td style={td}>{r.stop}</td><td style={td}>{r.period}</td><td style={td}>{r.trades}</td>
+                    <td style={td}>{r.winRatePct}%</td><td style={{ ...td, color: tone(r.expectancyPct), fontWeight: 600 }}>{pct(r.expectancyPct)}</td>
+                    <td style={td}>{r.profitFactor ?? "n/a"}</td><td style={{ ...td, color: "#c0392b" }}>{pct(r.maxDrawdownPct)}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          )}
           <div style={box}>
             <h2 style={{ fontSize: 16, marginTop: 0 }}>Worst trades</h2>
             {data.portfolio.worst.map((t) => (

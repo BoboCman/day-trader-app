@@ -49,3 +49,17 @@ describe("replay variants", () => {
     expect(none).toEqual([]);
   });
 });
+
+describe("replay fills and MAE", () => {
+  it("next-open fills buy at the following session's open and record how far trades dipped", () => {
+    const { under, fund } = series();
+    const rows = align(under, fund);
+    const atClose = replayFund("TECL", rows, { stopLossPct: null, costPctPerSide: 0 })[0];
+    const nextOpen = replayFund("TECL", rows, { stopLossPct: null, costPctPerSide: 0, fill: "nextOpen" })[0];
+    expect(nextOpen.entryDate).toBe(atClose.entryDate); // entry is dated by its signal day
+    expect(nextOpen.returnPct).not.toBe(atClose.returnPct);
+    for (const t of [atClose, nextOpen]) expect(t.maePct).toBeLessThanOrEqual(0);
+    const s = summarize([atClose, nextOpen]);
+    expect(s.winnersDipped.pastMinus10Pct).toBeLessThanOrEqual(s.winnersDipped.pastMinus5Pct);
+  });
+});

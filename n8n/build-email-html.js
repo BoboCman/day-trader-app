@@ -147,6 +147,7 @@ const buyCard = (r) => {
         <div style="font-size:12px;color:${C.sub};padding-top:6px;">${esc(r.underlying)} ${s.price} · <span style="color:${tone(s.dayChangePct)};">${pct(s.dayChangePct)}</span> today · ${pct(s.pctFromSma200)} vs 200-day</div>
         ${lookThrough(r)}
         ${cautionBox(r)}
+        ${buyCaution(r) ? `<div style="margin-top:10px;font-size:13px;color:${C.amber};background:${C.amberBg};border-radius:8px;padding:10px 12px;">${esc(buyCaution(r))}.</div>` : ''}
         ${orderRow}
         ${qualityBox(r)}
         ${o && top && o.fullShares === 0 ? `<div style="margin-top:12px;font-size:13px;color:${C.amber};background:${C.amberBg};border-radius:8px;padding:10px 12px;">${
@@ -237,7 +238,9 @@ const statusCell = (r) => {
   const a = r.signal.action;
   if (a === 'BUY') return pill('Buy', C.green, C.greenBg);
   if (a === 'EXIT_IF_HOLDING') return pill('Exit if holding', C.amber, C.amberBg);
-  if (!r.signal.aboveTrend) return pill('Below 200-day', C.grey, C.greyBg);
+  const st = r.trend?.stance;
+  if (st === 'WATCH') return pill('Watch', C.amber, C.amberBg);
+  if (st === 'PASS' || !r.signal.aboveTrend) return pill('Pass', C.grey, C.greyBg);
   return pill('Wait', C.grey, C.greyBg);
 };
 const th = (t, align = 'left') =>
@@ -259,6 +262,24 @@ const rows = results
         </tr>`,
   )
   .join('');
+
+// ---------- trends table: fund return in bold, index beneath. Context only, never an order.
+const trendNum = (n) => (n === null || n === undefined ? '–' : (n > 0 ? '+' : '') + Number(n).toFixed(1) + '%');
+const trendCell = (r, k) => {
+  const f = r.trend?.fund?.[k], i = r.trend?.index?.[k];
+  return `<td align="right" style="padding:8px 10px;border-bottom:1px solid ${C.line};white-space:nowrap;">
+    <div style="font-size:13px;font-weight:600;color:${tone(f ?? 0)};">${trendNum(f)}</div>
+    <div style="font-size:11px;color:${C.sub};">${trendNum(i)}</div></td>`;
+};
+const withTrend = results.filter((r) => !r.error && r.trend);
+const trendRows = withTrend
+  .map((r) => `<tr>
+      <td style="padding:8px 10px;border-bottom:1px solid ${C.line};"><div style="font-size:13px;font-weight:700;color:${C.ink};">${esc(r.fund)}</div><div style="font-size:11px;color:${C.sub};">${esc(r.underlying)}</div></td>
+      ${['d5', 'm1', 'm3', 'm6', 'offHigh3m'].map((k) => trendCell(r, k)).join('')}
+    </tr>`)
+  .join('');
+const watches = withTrend.filter((r) => r.trend.stance === 'WATCH');
+const buyCaution = (r) => (r.trend?.stance === 'BUY' && /negative/.test(r.trend.reason) ? r.trend.reason : '');
 
 const section = (title) =>
   `<tr><td style="padding:10px 2px 8px 2px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:${C.sub};">${title}</td></tr>`;
@@ -296,6 +317,13 @@ const html = `<!doctype html>
     </table>
   </td></tr>` : ''}
 
+  ${watches.length ? `${section('On watch')}
+  <tr><td style="padding:0 0 14px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.card};border:1px solid ${C.line};border-left:4px solid #f1d58a;border-radius:10px;">
+      ${watches.map((r) => `<tr><td style="padding:12px 16px;font-size:14px;line-height:1.5;color:${C.ink};border-bottom:1px solid ${C.line};"><b>${esc(r.fund)}</b>: ${esc(r.trend.reason)}.<div style="font-size:13px;color:${C.sub};">${esc(r.trend.trigger ?? '')}. No order until then.</div></td></tr>`).join('')}
+    </table>
+  </td></tr>` : ''}
+
   ${section('Watchlist')}
   <tr><td style="padding:0 0 14px 0;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.card};border:1px solid ${C.line};border-radius:10px;border-collapse:separate;overflow:hidden;">
@@ -303,6 +331,15 @@ const html = `<!doctype html>
       ${rows}
     </table>
   </td></tr>
+
+  ${trendRows ? `${section('Trends')}
+  <tr><td style="padding:0 0 14px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.card};border:1px solid ${C.line};border-radius:10px;border-collapse:separate;overflow:hidden;">
+      <tr>${th('Fund / index')}${th('5D', 'right')}${th('1M', 'right')}${th('3M', 'right')}${th('6M', 'right')}${th('Off 3M high', 'right')}</tr>
+      ${trendRows}
+    </table>
+    <div style="font-size:11px;color:${C.sub};padding:6px 4px 0 4px;">Fund in bold, its index beneath. Watch and Pass are context only: only a Buy gets an order ticket.</div>
+  </td></tr>` : ''}
 
   ${ai.backdrop ? `${section('Market backdrop')}
   <tr><td style="padding:0 0 14px 0;">

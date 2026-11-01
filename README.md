@@ -36,9 +36,11 @@ Any caution flag (fear spiking, narrow drop, single-stock shock, news, or an eve
 
 **Price checks.** Each fund's live price is flagged if it's more than 10 minutes old or the IEX bid/ask is wider than 1%. These are warnings only.
 
+**Trends and stance.** Each fund and its index get 5-day, 1-month, 3-month and 6-month returns and the distance below the 3-month high. Each fund is labelled BUY (the rules fired), WATCH (index 4%+ off its 3-month high while its 3- and 6-month returns are positive, but no entry yet; the email says what would trigger it), PASS (below the 200-day average, a negative 6-month return, or down more than 5% over 3 months) or nothing. Only BUY ever gets an order ticket; WATCH and PASS are context, and their thresholds (`STANCE_RULES` in `lib/trends.ts`) are untested.
+
 Rule parameters live in `lib/config.ts`.
 
-**Replay.** `/replay` (unlock with your key) runs today's exact rules on daily data since 2016 and shows win rate, average win and loss, stop-outs and drawdown, overall, per fund, per entry signal, and with other stop distances for comparison. It is a one-time sanity check of the payoff shape, not a tuning tool.
+**Replay.** `/replay` (unlock with your key) runs today's exact rules on daily data since 2016 and shows win rate, average win and loss, stop-outs and drawdown, overall, per fund, per entry signal, and with other stop distances for comparison. A robustness table repeats stops of 5%, 7.5%, 10%, 20% and none in each half of the data, filling at the signal-day close (optimistic) and at the next session's open (no look-ahead). It also shows how far winning trades dipped before recovering, which tells you how many winners a tighter stop would have cut. It is a one-time sanity check of the payoff shape, not a tuning tool.
 
 ## Setup (one time)
 

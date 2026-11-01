@@ -85,7 +85,7 @@ const positionCard = (p) => {
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
           <td valign="middle">
             <span style="font-size:20px;font-weight:800;color:${C.ink};">${esc(p.fund)}</span>
-            <span style="font-size:13px;color:${C.sub};padding-left:6px;">day ${p.day} of ${p.maxDays} · ${p.shares} sh @ ${money(p.entryPrice)}</span>
+            <span style="font-size:13px;color:${C.sub};padding-left:6px;">${p.day === 0 ? `bought last session · 0 of ${p.maxDays} days held` : `day ${p.day} of ${p.maxDays}`} · ${p.shares} sh @ ${money(p.entryPrice)}</span>
           </td>
           <td align="right" valign="middle">${sell ? pill('SELL TODAY', '#ffffff', C.red) : pill('HOLD', C.grey, C.greyBg)}</td>
         </tr></table>
@@ -117,7 +117,18 @@ const buyCard = (r) => {
   const waiting = !!o && o.fullShares === 0 && !!o.afterSells?.fullShares;
   const full = o ? (waiting ? o.afterSells.fullShares : o.fullShares) : 0;
   const half = o ? (waiting ? o.afterSells.halfShares : o.halfShares) : 0;
-  const orderRow = o
+  // Cap fully in use and no sale pending: show the limit only, not a row of zero-share sizes.
+  const capFull = !!o && full === 0;
+  const orderRow = capFull
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${C.line};border-radius:8px;border-collapse:separate;margin-top:12px;">
+        <tr>${stat('Limit price', money(o.suggestedLimit), `last ${money(o.fundPrice)}`)}
+          <td style="padding:10px 12px;" valign="top">
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:${C.sub};">Size</div>
+            <div style="font-size:18px;font-weight:700;color:${C.sub};padding-top:2px;">None</div>
+            <div style="font-size:12px;color:${C.sub};">cap in use</div>
+          </td></tr>
+      </table>`
+    : o
     ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${C.line};border-radius:8px;border-collapse:separate;margin-top:12px;">
         <tr>
           ${stat('Limit price', money(o.suggestedLimit), `last ${money(o.fundPrice)}`)}

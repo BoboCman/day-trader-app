@@ -275,7 +275,21 @@ const withTrend = results.filter((r) => !r.error && r.trend);
 const trendRows = withTrend
   .map((r) => `<tr>
       <td style="padding:8px 10px;border-bottom:1px solid ${C.line};"><div style="font-size:13px;font-weight:700;color:${C.ink};">${esc(r.fund)}</div><div style="font-size:11px;color:${C.sub};">${esc(r.underlying)}</div></td>
-      ${['d5', 'm1', 'm3', 'm6', 'offHigh3m'].map((k) => trendCell(r, k)).join('')}
+      ${['d5', 'm1', 'm3', 'm6'].map((k) => trendCell(r, k)).join('')}
+    </tr>`)
+  .join('');
+// Off-the-high card: how far below the highest close of each window (0% = at the high).
+const offCell = (r, k) => {
+  const f = r.trend?.fund?.offHigh?.[k], i = r.trend?.index?.offHigh?.[k];
+  const shade = (v) => (v === null || v === undefined ? C.sub : v <= -10 ? C.red : v < 0 ? C.amber : C.green);
+  return `<td align="right" style="padding:8px 10px;border-bottom:1px solid ${C.line};white-space:nowrap;">
+    <div style="font-size:13px;font-weight:600;color:${shade(f)};">${trendNum(f)}</div>
+    <div style="font-size:11px;color:${C.sub};">${trendNum(i)}</div></td>`;
+};
+const offRows = withTrend.filter((r) => r.trend.fund?.offHigh)
+  .map((r) => `<tr>
+      <td style="padding:8px 10px;border-bottom:1px solid ${C.line};"><div style="font-size:13px;font-weight:700;color:${C.ink};">${esc(r.fund)}</div><div style="font-size:11px;color:${C.sub};">${esc(r.underlying)}</div></td>
+      ${['d5', 'm1', 'm3', 'm6', 'm12'].map((k) => offCell(r, k)).join('')}
     </tr>`)
   .join('');
 const watches = withTrend.filter((r) => r.trend.stance === 'WATCH');
@@ -335,10 +349,18 @@ const html = `<!doctype html>
   ${trendRows ? `${section(`Trends${withTrend[0]?.trend?.asOf ? ` · closes through ${new Date(withTrend[0].trend.asOf + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}` : ''}`)}
   <tr><td style="padding:0 0 14px 0;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.card};border:1px solid ${C.line};border-radius:10px;border-collapse:separate;overflow:hidden;">
-      <tr>${th('Fund / index')}${th('5D', 'right')}${th('1M', 'right')}${th('3M', 'right')}${th('6M', 'right')}${th('Off 3M high', 'right')}</tr>
+      <tr>${th('Fund / index')}${th('5D', 'right')}${th('1M', 'right')}${th('3M', 'right')}${th('6M', 'right')}</tr>
       ${trendRows}
     </table>
-    <div style="font-size:11px;color:${C.sub};padding:6px 4px 0 4px;">Fund in bold, its index beneath. Periods count trading sessions: 5D = 5, 1M = 21, 3M = 63, 6M = 126, ending at the latest close (live price during market hours), dividend-adjusted. Watch and Pass are context only: only a Buy gets an order ticket.</div>
+    <div style="font-size:11px;color:${C.sub};padding:6px 4px 0 4px;">Fund in bold, its index beneath. Returns: 5D = 5 trading sessions; 1M, 3M and 6M are calendar months, as on Yahoo. Ends at the latest close (live price during market hours), dividend-adjusted. Watch and Pass are context only: only a Buy gets an order ticket.</div>
+  </td></tr>` : ''}
+  ${offRows ? `${section('Off the high')}
+  <tr><td style="padding:0 0 14px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.card};border:1px solid ${C.line};border-radius:10px;border-collapse:separate;overflow:hidden;">
+      <tr>${th('Fund / index')}${th('5D', 'right')}${th('1M', 'right')}${th('3M', 'right')}${th('6M', 'right')}${th('12M', 'right')}</tr>
+      ${offRows}
+    </table>
+    <div style="font-size:11px;color:${C.sub};padding:6px 4px 0 4px;">How far below the highest close in each period (0% = at the high). Same periods as the returns above, plus 12 months.</div>
   </td></tr>` : ''}
 
   ${ai.backdrop ? `${section('Market backdrop')}

@@ -297,6 +297,26 @@ const offCell = (r, k) => {
     <div style="font-size:13px;font-weight:600;color:${shade(f)};">${trendNum(f)}</div>
     <div style="font-size:11px;color:${C.sub};">${trendNum(i)}</div></td>`;
 };
+// Where each fund's highs were: windows that share the same high are merged ("1M–3M high").
+const WIN_LABEL = { d5: '5D', m1: '1M', m3: '3M', m6: '6M', m12: '12M' };
+const shortDate = (d) => new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+const highLine = (r) => {
+  const h = r.trend?.fund?.highs;
+  if (!h) return '';
+  const groups = [];
+  for (const k of ['d5', 'm1', 'm3', 'm6', 'm12']) {
+    const x = h[k];
+    if (!x) continue;
+    const g = groups.at(-1);
+    if (g && g.date === x.date && g.close === x.close) g.to = k;
+    else groups.push({ from: k, to: k, date: x.date, close: x.close, off: r.trend.fund.offHigh?.[k] });
+  }
+  if (!groups.length) return '';
+  const parts = groups.map((g) =>
+    `${g.from === g.to ? WIN_LABEL[g.from] : `${WIN_LABEL[g.from]}–${WIN_LABEL[g.to]}`} high <b>${money(g.close)}</b>${g.date ? ` on ${shortDate(g.date)}` : ''} (<span style="color:${tone(g.off ?? 0)};">${trendNum(g.off)}</span>)`);
+  return `<b>${esc(r.fund)}</b>: ${parts.join(' · ')}`;
+};
+const highLines = withTrend.map(highLine).filter(Boolean).join('<br>');
 const offRows = withTrend.filter((r) => r.trend.fund?.offHigh)
   .map((r) => `<tr>
       <td style="padding:8px 10px;border-bottom:1px solid ${C.line};"><div style="font-size:13px;font-weight:700;color:${C.ink};">${esc(r.fund)}</div><div style="font-size:11px;color:${C.sub};">${esc(r.underlying)}</div></td>
@@ -371,7 +391,8 @@ const html = `<!doctype html>
       <tr>${th('Fund / index')}${th('5D', 'right')}${th('1M', 'right')}${th('3M', 'right')}${th('6M', 'right')}${th('12M', 'right')}</tr>
       ${offRows}
     </table>
-    <div style="font-size:11px;color:${C.sub};padding:6px 4px 0 4px;">How far below the highest close in each period (0% = at the high). Same periods as the returns above, plus 12 months.</div>
+    ${highLines ? `<div style="font-size:12px;line-height:1.6;color:${C.ink};padding:8px 4px 0 4px;">${highLines}</div>` : ''}
+    <div style="font-size:11px;color:${C.sub};padding:6px 4px 0 4px;">How far below the highest close in each period (0% = at the high). The highs are daily closes, so they can sit below the intraday highs on Yahoo's chart. A longer period repeats a shorter one's number when its high falls in the shorter period.</div>
   </td></tr>` : ''}
 
   ${ai.backdrop ? `${section('Market backdrop')}

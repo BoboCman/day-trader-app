@@ -27,6 +27,8 @@ export interface TrendStats {
   offHigh3m: number | null;
   /** % below the highest close in each window, same windows as the returns plus 12 months */
   offHigh: { d5: number | null; m1: number | null; m3: number | null; m6: number | null; m12: number | null };
+  /** The highest close in each window and its date (date only when dates were given) */
+  highs: Record<"d5" | "m1" | "m3" | "m6" | "m12", { close: number; date: string | null } | null>;
 }
 
 /** Date (YYYY-MM-DD) `months` calendar months before `d`, clamped to month end (Mar 31 -> Feb 28). */
@@ -62,15 +64,22 @@ export function trendStats(closes: number[], dates?: string[]): TrendStats {
     const i = baseIdx(months, sessions);
     return i === null ? null : pctVs(closes[i]);
   };
-  // Highest close from the window's start close through today.
-  const offHighFrom = (i: number | null) => (i === null ? null : r2((last / Math.max(...closes.slice(i)) - 1) * 100));
-  const offHigh = {
-    d5: offHighFrom(n > TREND_WINDOWS.d5 ? n - 1 - TREND_WINDOWS.d5 : null),
-    m1: offHighFrom(baseIdx(1, TREND_WINDOWS.m1)),
-    m3: offHighFrom(baseIdx(3, TREND_WINDOWS.m3)),
-    m6: offHighFrom(baseIdx(6, TREND_WINDOWS.m6)),
-    m12: offHighFrom(baseIdx(12, TREND_WINDOWS.m12)),
+  // Highest close inside each window: the sessions after its base close, through today.
+  const highFrom = (i: number | null) => {
+    if (i === null) return null;
+    let k = i + 1;
+    for (let j = i + 1; j < n; j++) if (closes[j] > closes[k]) k = j;
+    return { close: r2(closes[k]), date: dates && dates.length === n ? dates[k] : null };
   };
+  const highs = {
+    d5: highFrom(n > TREND_WINDOWS.d5 ? n - 1 - TREND_WINDOWS.d5 : null),
+    m1: highFrom(baseIdx(1, TREND_WINDOWS.m1)),
+    m3: highFrom(baseIdx(3, TREND_WINDOWS.m3)),
+    m6: highFrom(baseIdx(6, TREND_WINDOWS.m6)),
+    m12: highFrom(baseIdx(12, TREND_WINDOWS.m12)),
+  };
+  const off = (h: { close: number } | null) => (h ? r2((last / h.close - 1) * 100) : null);
+  const offHigh = { d5: off(highs.d5), m1: off(highs.m1), m3: off(highs.m3), m6: off(highs.m6), m12: off(highs.m12) };
   return {
     d5: ret(TREND_WINDOWS.d5),
     m1: at(1, TREND_WINDOWS.m1),
@@ -78,6 +87,7 @@ export function trendStats(closes: number[], dates?: string[]): TrendStats {
     m6: at(6, TREND_WINDOWS.m6),
     offHigh3m: offHigh.m3,
     offHigh,
+    highs,
   };
 }
 

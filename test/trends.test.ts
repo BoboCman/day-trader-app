@@ -17,7 +17,8 @@ describe("trendStats", () => {
 
   it("returns nulls when history is short", () => {
     expect(trendStats([1, 2, 3])).toEqual({ d5: null, m1: null, m3: null, m6: null, offHigh3m: null,
-      offHigh: { d5: null, m1: null, m3: null, m6: null, m12: null } });
+      offHigh: { d5: null, m1: null, m3: null, m6: null, m12: null },
+      highs: { d5: null, m1: null, m3: null, m6: null, m12: null } });
   });
 });
 
@@ -59,6 +60,7 @@ describe("calendar-month windows", () => {
     const base3 = closes[dates.indexOf("2026-07-29")];
     expect(t.m3).toBeCloseTo((closes.at(-1)! / base3 - 1) * 100, 2);
     expect(t.m6).toBeNull(); // not enough history
+    expect(t.highs.m1?.date).toBe(dates.at(-1)); // rising series: the high is today
   });
 });
 
@@ -71,5 +73,6 @@ describe("off-high windows", () => {
     expect(t.offHigh.m12).toBeCloseTo((closes.at(-1)! / 200 - 1) * 100, 1);
     expect(t.offHigh.m3).toBe(t.offHigh3m);
     expect(t.offHigh.m12!).toBeLessThanOrEqual(t.offHigh.m6!);
+    expect(t.highs.m12?.close).toBe(200);
   });
 });

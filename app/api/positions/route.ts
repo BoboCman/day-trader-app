@@ -11,13 +11,14 @@ export const runtime = "nodejs";
 const FUNDS: readonly string[] = WATCHLIST.map((w) => w.fund);
 const isDate = (s: unknown): s is string => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
 const RULES = ["RSI2", "DOUBLE7", "BOTH"] as const;
-const REASONS = ["rsi2 exit", "double7 exit", "time stop", "stop loss", "manual"];
+const REASONS = ["rsi2 exit", "double7 exit", "time stop", "stop loss", "profit target", "manual"];
 const isPos = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n > 0;
 
 export async function GET(req: Request) {
   if (!authorized(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!storeConfigured()) return NextResponse.json({ configured: false, positions: [] });
-  return NextResponse.json({ configured: true, stopLossPct: riskSettings().stopLossPct, positions: await loadPositions() });
+  const r = riskSettings();
+  return NextResponse.json({ configured: true, stopLossPct: r.stopLossPct, totalCapUsd: r.totalCapUsd, positions: await loadPositions() });
 }
 
 /**

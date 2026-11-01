@@ -3,6 +3,8 @@
 // (headline, one note per buy, market backdrop) via the Structured Output Parser.
 // Email-safe: table layout and inline styles only, which Gmail and Outlook render.
 
+// n8n's Code sandbox has no URLSearchParams, so build query strings by hand.
+const qs = (o) => Object.entries(o).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
 const data = $('Get signals').first().json;
 const ai = $input.first().json.output ?? {};
 
@@ -246,7 +248,7 @@ const qualityBox = (r) => {
     : '';
 };
 const logUrl = (r, o, n) =>
-  `${appUrl}/positions?${new URLSearchParams({ fund: r.fund, rule: o.entryRule ?? '', limit: String(o.suggestedLimit), shares: String(n) })}`;
+  `${appUrl}/positions?${qs({ fund: r.fund, rule: o.entryRule ?? '', limit: String(o.suggestedLimit), shares: String(n) })}`;
 
 const noBuys = `
   <tr><td style="padding:0 0 14px 0;">

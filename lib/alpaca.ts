@@ -121,3 +121,30 @@ export async function marketClock(): Promise<{ is_open: boolean; next_close: str
 export function nyDate(d: Date): string {
   return d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 }
+
+/** Daily open/low/close bars from `start` (YYYY-MM-DD) to yesterday, split/dividend adjusted. Used by the replay. */
+export async function dailyBars(
+  symbols: string[],
+  start: string,
+  todayNy: string,
+): Promise<Record<string, { t: string; o: number; l: number; c: number }[]>> {
+  const out: Record<string, { t: string; o: number; l: number; c: number }[]> = {};
+  let pageToken: string | undefined;
+  do {
+    const q = new URLSearchParams({
+      symbols: symbols.join(","), timeframe: "1Day", start,
+      end: new Date(Date.now() - 16 * 60_000).toISOString(),
+      adjustment: "all", feed: "sip", limit: "10000",
+    });
+    if (pageToken) q.set("page_token", pageToken);
+    const body = await get<{ bars: Record<string, { t: string; o: number; l: number; c: number }[]>; next_page_token?: string }>(
+      `${DATA}/v2/stocks/bars?${q}`,
+    );
+    for (const [s, bars] of Object.entries(body.bars ?? {})) {
+      (out[s] ??= []).push(...bars.map((b) => ({ t: nyDate(new Date(b.t)), o: b.o, l: b.l, c: b.c })));
+    }
+    pageToken = body.next_page_token ?? undefined;
+  } while (pageToken);
+  for (const s of Object.keys(out)) out[s] = out[s].filter((b) => b.t < todayNy);
+  return out;
+}

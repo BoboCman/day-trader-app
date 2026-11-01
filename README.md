@@ -38,6 +38,8 @@ Any caution flag (fear spiking, narrow drop, single-stock shock, news, or an eve
 
 Rule parameters live in `lib/config.ts`.
 
+**Replay.** `/replay` (unlock with your key) runs today's exact rules on daily data since 2016 and shows win rate, average win and loss, stop-outs and drawdown, overall, per fund, per entry signal, and with other stop distances for comparison. It is a one-time sanity check of the payoff shape, not a tuning tool.
+
 ## Setup (one time)
 
 ### 1. Alpaca market data (free)

@@ -91,9 +91,10 @@ export const RULES = {
   rsiExitSma: 5,
   double7Lookback: 7,
   timeStopSessions: 7,
-  /** Default stop-loss below entry, in %; override with STOP_LOSS_PCT */
-  disasterStopPct: -25,
 } as const;
+
+/** Default protective stop below entry, in %, when STOP_LOSS_PCT is not set (chosen 2026-11-01 after the replay). */
+export const DEFAULT_STOP_LOSS_PCT = 10;
 
 const envNum = (name: string, fallback: number) => {
   const v = Number(process.env[name]);
@@ -112,7 +113,7 @@ export function riskSettings() {
     /** Default leverage; each watchlist entry carries its own */
     leverage: 3,
     /** Protective GTC stop distance below the entry, in % (positive number) */
-    stopLossPct: envNum("STOP_LOSS_PCT", -RULES.disasterStopPct),
+    stopLossPct: envNum("STOP_LOSS_PCT", DEFAULT_STOP_LOSS_PCT),
     volLookback: 20,
     /** Most you're willing to lose per trade if the stop is hit; 0 = off */
     maxLossPerTradeUsd: envNum("MAX_LOSS_PER_TRADE_USD", 0),

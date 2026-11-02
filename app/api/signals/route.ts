@@ -169,6 +169,14 @@ export async function GET(req: Request) {
     const plan = planOrders(candidates, { ...risk, totalCapUsd: capRemainingUsd });
     // What the buy would be once today's sells have filled (shown, never sized into the cap early).
     const planAfterSells = sellingCost > 0 ? planOrders(candidates, { ...risk, totalCapUsd: capAfterSellsUsd }) : null;
+    // A ticket is only live while the market is open and the fund's price is fresh. Otherwise the
+    // signal is still reported (and sized, for reference) but marked as not an order to place.
+    const notLiveReason = (r: (typeof evaluated)[number]) => {
+      if (!clock.is_open) return "The market is closed, so this is the last session's signal. Sizes are for reference only";
+      if (!("quality" in r)) return null;
+      const age = r.quality.fundAgeMin;
+      return age !== null && age > 10 ? `The fund price is ${age} min old. Check the live quote at Fidelity before acting` : null;
+    };
     const results = evaluated.map((r) => {
       if (!("signal" in r)) return r;
       const o = plan.get(r.fund);
@@ -177,6 +185,7 @@ export async function GET(req: Request) {
         order: o
           ? {
               ...o,
+              notLive: notLiveReason(r),
               cautioned: r.context.caution.sizeMultiplier < 1,
               entryRule: r.signal.rsi2Entry && r.signal.double7Entry ? "BOTH" : r.signal.rsi2Entry ? "RSI2" : "DOUBLE7",
               afterSells: planAfterSells?.get(r.fund)
@@ -251,13 +260,13 @@ export async function GET(req: Request) {
         events,
         description:
           "Caution flags halve the suggested size: fear gauge spiking, a narrow drop driven by a few top " +
-          "holdings, a single-stock shock (top holding down 8%+), stock-specific news, or a Fed meeting or " +
-          "jobs report within 3 days. Top-holdings lists are approximate.",
+          "holdings, a single-stock shock (top holding down 8%+), or a Fed meeting or jobs report within 3 days. " +
+          "Headlines are shown for context only and don't change the size. Top-holdings lists are approximate.",
       },
       risk: {
         ...risk,
         description:
-          `One trade at a time, up to $${risk.totalCapUsd.toLocaleString("en-US")} total. Size is set so a typical ` +
+          `One new trade per day, up to $${risk.totalCapUsd.toLocaleString("en-US")} in all open positions. Size is set so a typical ` +
           `day's move in the 3x fund is about $${risk.riskPerDayUsd.toLocaleString("en-US")}. When several funds ` +
           "signal, the top pick is the most oversold (lowest RSI(2)); the others are alternatives, not extra trades." +
           (risk.maxLossPerTradeUsd
@@ -276,6 +285,7 @@ export async function GET(req: Request) {
       summary,
       rules: {
         ...RULES,
+        stopLossPct: risk.stopLossPct,
         description:
           "Signals use the unleveraged underlying. Buy only if price is above its 200-day average and " +
           "either RSI(2) < 10 or price is at a 7-day closing low. Exits: RSI(2) trade exits on a close " +

@@ -53,6 +53,10 @@ describe("cautionFor", () => {
     expect(c.sizeMultiplier).toBe(0.5);
     expect(c.reasons[0]).toMatch(/Jobs report/);
   });
+  it("shows news without halving the size", () => {
+    const news = [{ symbol: "MS", headline: "Morgan Stanley forecast", created_at: "2026-10-30T12:00:00Z" }];
+    expect(cautionFor({ fear: null, breadth: calm, news, events: [] }).sizeMultiplier).toBe(1);
+  });
   it("feeds through to a smaller order", () => {
     const base = { fund: "TECL", fundPrice: 100, rsi2: 5, pctFromSma200: 10, dailyVolPct: 1 };
     const s = { totalCapUsd: 25000, riskPerDayUsd: 1000, leverage: 3, stopLossPct: 20 };

@@ -61,3 +61,24 @@ describe("per-fund leverage", () => {
     expect(two.sizeUsd).toBeGreaterThan(three.sizeUsd);
   });
 });
+
+describe("portfolio limits", () => {
+  const c = { fund: "TECL", fundPrice: 100, rsi2: 5, pctFromSma200: 5, dailyVolPct: 1 };
+  const big = { totalCapUsd: 55_000, riskPerDayUsd: 10_000, leverage: 3, stopLossPct: 10 };
+  it("caps a fund at its remaining room", () => {
+    const o = sizeOrder({ ...c, fundRoomUsd: 2_500 }, big, 1);
+    expect(o.sizeUsd).toBe(2_500);
+    expect(o.sizeLimitedBy).toBe("fund cap");
+  });
+  it("caps by trading volume", () => {
+    const o = sizeOrder({ ...c, liquidityCapUsd: 9_000 }, big, 1);
+    expect(o.sizeUsd).toBe(9_000);
+    expect(o.sizeLimitedBy).toBe("liquidity");
+  });
+  it("caps by the open-risk budget left, and sizes zero when it is used up", () => {
+    const o = sizeOrder({ ...c, stopRiskRoomUsd: 2_514 }, big, 1);
+    expect(o.sizeUsd).toBe(25_140);
+    expect(o.sizeLimitedBy).toBe("open risk");
+    expect(sizeOrder({ ...c, stopRiskRoomUsd: -10 }, big, 1).fullShares).toBe(0);
+  });
+});

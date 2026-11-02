@@ -8,6 +8,11 @@ export interface WatchItem {
   leverage: number;
   /** false = watch-only: the dip is reported, but no order is ever sized for it */
   tradable: boolean;
+  /**
+   * Tradable fund that gets no buy ticket until its replay validates it (second-opinion review,
+   * 2026-11-02). Unlock without a code change by listing it in ENABLED_FUNDS, e.g. "WANT,DRN".
+   */
+  gated?: boolean;
 }
 
 /**
@@ -21,18 +26,26 @@ export const WATCHLIST: readonly WatchItem[] = [
   { fund: "TECL", underlying: "XLK", name: "Technology 3x", leverage: 3, tradable: true },
   { fund: "CURE", underlying: "XLV", name: "Health Care 3x", leverage: 3, tradable: true },
   { fund: "FAS", underlying: "XLF", name: "Financials 3x", leverage: 3, tradable: true },
-  { fund: "WANT", underlying: "XLY", name: "Consumer Discretionary 3x", leverage: 3, tradable: true },
-  { fund: "DUSL", underlying: "XLI", name: "Industrials 3x", leverage: 3, tradable: true },
-  { fund: "UTSL", underlying: "XLU", name: "Utilities 3x", leverage: 3, tradable: true },
-  { fund: "DRN", underlying: "XLRE", name: "Real Estate 3x", leverage: 3, tradable: true },
+  { fund: "WANT", underlying: "XLY", name: "Consumer Discretionary 3x", leverage: 3, tradable: true, gated: true },
+  { fund: "DUSL", underlying: "XLI", name: "Industrials 3x", leverage: 3, tradable: true, gated: true },
+  { fund: "UTSL", underlying: "XLU", name: "Utilities 3x", leverage: 3, tradable: true, gated: true },
+  { fund: "DRN", underlying: "XLRE", name: "Real Estate 3x", leverage: 3, tradable: true, gated: true },
   { fund: "XLE", underlying: "XLE", name: "Energy (no 3x fund)", leverage: 1, tradable: false },
   { fund: "XLB", underlying: "XLB", name: "Materials (no 3x fund)", leverage: 1, tradable: false },
   { fund: "XLP", underlying: "XLP", name: "Consumer Staples (no 3x fund)", leverage: 1, tradable: false },
   { fund: "XLC", underlying: "XLC", name: "Communication Services (no 3x fund)", leverage: 1, tradable: false },
 ];
 
-/** Funds you can actually buy (positions, replay, sizing). */
+/** Funds with a 3x fund (positions page, replay). */
 export const TRADABLE = WATCHLIST.filter((w) => w.tradable);
+
+/** Funds the app may write a buy ticket for today: tradable and not gated (or unlocked via ENABLED_FUNDS). */
+export function ticketsEnabled(w: WatchItem, env: string | undefined = process.env.ENABLED_FUNDS): boolean {
+  if (!w.tradable) return false;
+  if (!w.gated) return true;
+  const unlocked = (env ?? "").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+  return unlocked.includes(w.fund);
+}
 
 /**
  * Largest holdings of each underlying, used for the look-through (breadth and single-stock shocks).
@@ -103,5 +116,11 @@ export function riskSettings() {
     volLookback: 20,
     /** Most you're willing to lose per trade if the stop is hit; 0 = off */
     maxLossPerTradeUsd: envNum("MAX_LOSS_PER_TRADE_USD", 0),
+    /** Most of the total cap any one fund may hold, all open lots together, in % */
+    maxFundPct: envNum("MAX_FUND_PCT", 50),
+    /** Largest order as a % of the fund's 20-day average dollar volume */
+    maxAdvPct: envNum("MAX_ADV_PCT", 1),
+    /** Most you could lose if every open stop filled at once (open lots + the new trade); 0 = off */
+    maxTotalStopRiskUsd: envNum("MAX_TOTAL_STOP_RISK_USD", 5_000),
   };
 }

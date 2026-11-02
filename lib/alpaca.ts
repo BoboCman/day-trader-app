@@ -16,7 +16,7 @@ async function get<T>(url: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-interface Bar { t: string; c: number }
+interface Bar { t: string; c: number; v?: number }
 
 /**
  * Daily closes for completed sessions before today (split/dividend adjusted).

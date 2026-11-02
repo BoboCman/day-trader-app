@@ -14,6 +14,12 @@ export interface BuyCandidate {
   sizeMultiplier?: number;
   /** Daily leverage of the fund; falls back to the settings default */
   leverage?: number;
+  /** Room left under the per-fund cap, in $ (absent = no per-fund limit) */
+  fundRoomUsd?: number;
+  /** Largest order the fund's trading volume supports, in $ (absent = no limit) */
+  liquidityCapUsd?: number;
+  /** Stop-loss dollars still unused under the total open-risk budget (absent = no limit) */
+  stopRiskRoomUsd?: number;
 }
 
 export interface SizedOrder {
@@ -35,7 +41,7 @@ export interface SizedOrder {
   /** Dollars lost at full size if the stop fills exactly at its price */
   lossAtStopUsd: number;
   /** What set the size before any caution cut */
-  sizeLimitedBy: "cap" | "volatility" | "loss budget";
+  sizeLimitedBy: "cap" | "volatility" | "loss budget" | "fund cap" | "liquidity" | "open risk";
 }
 
 export interface RiskSettings {
@@ -59,8 +65,13 @@ export function sizeOrder(c: BuyCandidate, s: RiskSettings, rank: number): Sized
   const riskSized = fundDailyVolPct > 0 ? s.riskPerDayUsd / (fundDailyVolPct / 100) : s.totalCapUsd;
   const stopLossPct = s.stopLossPct ?? 25;
   const lossSized = s.maxLossPerTradeUsd ? s.maxLossPerTradeUsd / (stopLossPct / 100) : Infinity;
-  const base = Math.min(s.totalCapUsd, riskSized, lossSized);
-  const sizeLimitedBy = base === s.totalCapUsd ? "cap" : base === lossSized ? "loss budget" : "volatility";
+  const fundRoom = Math.max(0, c.fundRoomUsd ?? Infinity);
+  const liquidity = Math.max(0, c.liquidityCapUsd ?? Infinity);
+  const openRiskSized = c.stopRiskRoomUsd === undefined ? Infinity : Math.max(0, c.stopRiskRoomUsd) / (stopLossPct / 100);
+  const base = Math.min(s.totalCapUsd, riskSized, lossSized, fundRoom, liquidity, openRiskSized);
+  const sizeLimitedBy: SizedOrder["sizeLimitedBy"] =
+    base === openRiskSized ? "open risk" : base === fundRoom ? "fund cap" : base === liquidity ? "liquidity" : base === s.totalCapUsd ? "cap"
+      : base === lossSized ? "loss budget" : "volatility";
   const sizeUsd = Math.round(base * (c.sizeMultiplier ?? 1));
   const fullShares = Math.floor(sizeUsd / suggestedLimit);
   const stopPrice = Math.round(suggestedLimit * (1 - stopLossPct / 100) * 100) / 100;

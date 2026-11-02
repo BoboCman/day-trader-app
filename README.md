@@ -1,6 +1,6 @@
 # Day Trader App
 
-Weekday alerts for dip-buys across all 11 S&P 500 sectors. Seven have a tradable 3x fund: TECL (tech), CURE (health care), FAS (financials), WANT (consumer discretionary), DUSL (industrials), UTSL (utilities) and DRN (real estate). Energy, materials, consumer staples and communication services have no usable 3x fund, so their dips are reported as watch-only (no order). WANT, DUSL, UTSL and DRN trade thinly: limit orders only. The watchlist lives in `lib/config.ts`.
+Weekday alerts for dip-buys across all 11 S&P 500 sectors. Seven have a tradable 3x fund: TECL (tech), CURE (health care), FAS (financials), WANT (consumer discretionary), DUSL (industrials), UTSL (utilities) and DRN (real estate). Energy, materials, consumer staples and communication services have no usable 3x fund, so their dips are reported as watch-only (no order). WANT, DUSL, UTSL and DRN trade thinly (limit orders only) and are gated: their dips show in the email without a ticket until the replay validates them (see `ENABLED_FUNDS`). The watchlist lives in `lib/config.ts`.
 
 - **Next.js on Vercel** makes the call. `GET /api/signals` runs the rules in plain code and returns JSON.
 - **n8n Cloud** runs at 3:40 PM ET on weekdays. It calls the endpoint, has Claude explain the result in plain English, and emails it.
@@ -58,6 +58,10 @@ Rule parameters live in `lib/config.ts`.
    - `RISK_PER_DAY_USD` (optional, defaults to 1000): trades are sized so a typical day in the 3x fund moves about this many dollars
    - `STOP_LOSS_PCT` (optional, defaults to 25): how far below your entry the GTC stop sits, and the loss that triggers SELL TODAY
    - `MAX_LOSS_PER_TRADE_USD` (optional, off by default): a loss budget. Size is capped so that hitting the stop loses at most about this much (e.g. $2,000 with a 20% stop means at most $10,000 per trade)
+   - `MAX_TOTAL_STOP_RISK_USD` (default 5000): most all open stops together may lose, counting the new trade. New buys shrink, or show no size, once it is used. 0 = off
+   - `MAX_FUND_PCT` (default 50): most of the total cap one fund may hold across all its open lots
+   - `MAX_ADV_PCT` (default 1): largest order as a % of the fund's 20-day average dollar volume
+   - `ENABLED_FUNDS` (optional): comma list that unlocks gated funds for buy tickets once their replay passes, e.g. `WANT,DRN`. WANT, DUSL, UTSL and DRN are gated by default
 3. Redeploy. To check that it works:
    `curl -H "Authorization: Bearer YOUR_SIGNALS_API_KEY" https://YOUR-APP.vercel.app/api/signals`
 

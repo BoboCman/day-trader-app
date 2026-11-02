@@ -25,8 +25,11 @@ const font = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial
 const results = data.results ?? [];
 // Watch-only sectors (no usable 3x fund) carry tradable: false: their dips are reported, never traded.
 const tradable = (r) => r.tradable !== false;
+// Gated funds (new 3x funds awaiting replay validation) have a fund but get no ticket yet.
+const canTicket = (r) => tradable(r) && r.ticketsEnabled !== false;
+const gated = (r) => tradable(r) && r.ticketsEnabled === false;
 const buys = results
-  .filter((r) => tradable(r) && r.signal?.action === 'BUY')
+  .filter((r) => canTicket(r) && r.signal?.action === 'BUY')
   .sort((a, b) => (a.order?.rank ?? 99) - (b.order?.rank ?? 99));
 const positions = (data.positions ?? []);
 const heldFunds = new Set(positions.map((p) => p.fund));
@@ -36,7 +39,10 @@ const sells = positions.filter((p) => p.action === 'SELL_TODAY');
 const tracking = !!data.positionsEnabled;
 const exitRelevant = (r) => tradable(r) && r.signal?.action === 'EXIT_IF_HOLDING' && (!tracking || heldFunds.has(r.fund));
 const exits = tracking ? [] : results.filter((r) => exitRelevant(r) && !heldFunds.has(r.fund));
-const sectorDips = results.filter((r) => !tradable(r) && r.signal?.action === 'BUY');
+const sectorDips = results.filter((r) => !canTicket(r) && r.signal?.action === 'BUY');
+// Why a sized order came out small or empty, in plain words.
+const LIMIT_LABEL = { 'loss budget': 'loss budget', 'fund cap': 'fund cap', liquidity: 'volume cap', 'open risk': 'open-risk cap' };
+const NONE_REASON = { 'fund cap': 'fund cap reached', liquidity: 'too little volume', 'open risk': 'open-risk cap used' };
 const sectorName = (r) => (r.name ?? r.underlying).replace(/ \(no 3x fund\)$/, '');
 // Short sector label for narrow table cells on watch-only rows.
 const sectorShort = (r) => sectorName(r).replace(/^Consumer /, '').replace(/ Services$/, '');
@@ -148,14 +154,14 @@ const buyCard = (r) => {
           <td style="padding:10px 12px;" valign="top">
             <div style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:${C.sub};">Size</div>
             <div style="font-size:18px;font-weight:700;color:${C.sub};padding-top:2px;">None</div>
-            <div style="font-size:12px;color:${C.sub};">cap in use</div>
+            <div style="font-size:12px;color:${C.sub};">${NONE_REASON[o.sizeLimitedBy] ?? 'cap in use'}</div>
           </td></tr>
       </table>`
     : o
     ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${C.line};border-radius:8px;border-collapse:separate;margin-top:12px;">
         <tr>
           ${stat('Limit price', money(o.suggestedLimit), `last ${money(o.fundPrice)}`)}
-          ${stat((waiting ? 'After sale' : 'Size') + (o.cautioned ? ' (halved)' : o.sizeLimitedBy === 'loss budget' ? ' (loss budget)' : ''), `${full} sh`, `≈ ${usd0(full * o.suggestedLimit)} · loss at stop ≈ ${usd0(full * (o.suggestedLimit - (o.stopPrice ?? 0)))}`)}
+          ${stat((waiting ? 'After sale' : 'Size') + (o.cautioned ? ' (halved)' : LIMIT_LABEL[o.sizeLimitedBy] ? ` (${LIMIT_LABEL[o.sizeLimitedBy]})` : ''), `${full} sh`, `≈ ${usd0(full * o.suggestedLimit)} · loss at stop ≈ ${usd0(full * (o.suggestedLimit - (o.stopPrice ?? 0)))}`)}
           <td style="padding:10px 12px;" valign="top">
             <div style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:${C.sub};">Half size</div>
             <div style="font-size:18px;font-weight:700;color:${C.ink};padding-top:2px;">${half} sh</div>
@@ -189,11 +195,17 @@ const buyCard = (r) => {
             ? 'Couldn\'t load your positions, so no size is given. Check the positions page before buying anything.'
             : o.afterSells?.fullShares
               ? `Your cap stays committed until your ${esc(sells.map((p) => p.fund).join(', '))} sale fills. Only once it has: buy up to <b>${o.afterSells.fullShares} sh</b> (half: ${o.afterSells.halfShares}).`
-              : `Your $${Math.round(data.risk?.totalCapUsd ?? 0).toLocaleString('en-US')} cap is already in use by open positions. Skip this one, or only take it after you sell.`
+              : o.sizeLimitedBy === 'fund cap'
+                ? `You already hold the most ${esc(r.fund)} the per-fund cap allows (${data.risk?.maxFundPct ?? 50}% of your cap). Skip this one.`
+                : o.sizeLimitedBy === 'open risk'
+                  ? `Your open stops already risk about ${usd0(data.openStopRiskUsd ?? 0)} of your ${usd0(data.risk?.maxTotalStopRiskUsd ?? 0)} open-risk cap. Skip this one, or only take it after you sell.`
+                  : o.sizeLimitedBy === 'liquidity'
+                    ? `${esc(r.fund)} trades too little for a sensible order size today. Skip this one.`
+                    : `Your $${Math.round(data.risk?.totalCapUsd ?? 0).toLocaleString('en-US')} cap is already in use by open positions. Skip this one, or only take it after you sell.`
         }</div>` : ''}
         ${o && top && (o.fullShares > 0 || o.afterSells?.fullShares) ? ((n) => ticket([
           ...(o.fullShares === 0 ? [`<b>Wait until your sell fills</b>, then mark it sold`] : []),
-          `<b>Buy ${n} ${esc(r.fund)}</b> · limit <b>${money(o.suggestedLimit)}</b> · day order · place 3:45-3:55 PM ET`,
+          `<b>Buy ${n} ${esc(r.fund)}</b> · limit <b>${money(o.suggestedLimit)}</b> · day order · place 3:45-3:55 PM ET. Check Fidelity's ask first: if it's above the limit, don't chase; if it's lower, use the ask`,
           `Once filled: <b>sell stop ${n} sh at ${money(o.stopPrice ?? o.suggestedLimit * (1 - (o.stopLossPct ?? 25) / 100))}</b> · good 'til canceled (${o.stopLossPct ?? 25}% stop)`,
           `Optional profit target: make it a <b>One-Cancels-the-Other</b> order (Fidelity conditional orders) with a GTC sell limit at ${targetList(o.suggestedLimit)}. Prices assume a fill at the limit; recompute from your fill. Untested until the replay says so; stop only follows the tested rules`,
           `Log the fill${appUrl ? ` at <a href="${esc(logUrl(r, o, n))}" style="color:${C.brand};">${esc(appUrl.replace(/^https?:\/\//, ''))}/positions</a> (pre-filled)` : ' on the positions page'} so tomorrow's email tracks it`,
@@ -272,6 +284,7 @@ const statusCell = (r) => {
   if (r.error) return pill('Data error', C.red, '#fdecea');
   const a = r.signal.action;
   if (!tradable(r) && a === 'BUY') return pill('Dip · no 3x', C.amber, C.amberBg);
+  if (gated(r) && a === 'BUY') return pill('Dip · not validated', C.amber, C.amberBg);
   if (a === 'BUY') return pill('Buy', C.green, C.greenBg);
   if (exitRelevant(r)) return pill('Exit if holding', C.amber, C.amberBg);
   const st = r.trend?.stance;
@@ -383,10 +396,10 @@ const html = `<!doctype html>
   ${section(buys.length ? 'Buy signals' : 'Today')}
   ${buys.length ? buys.map(buyCard).join('') : noBuys}
 
-  ${sectorDips.length ? `${section('Sector dips · no 3x fund')}
+  ${sectorDips.length ? `${section('Dips without a ticket')}
   <tr><td style="padding:0 0 14px 0;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.card};border:1px solid ${C.line};border-left:4px solid #f1d58a;border-radius:10px;">
-      ${sectorDips.map((r) => `<tr><td style="padding:12px 16px;font-size:14px;line-height:1.5;color:${C.ink};border-bottom:1px solid ${C.line};"><b>${esc(sectorName(r))}</b> (${esc(r.underlying)}): ${esc(r.signal.reasons.join('. '))}.<div style="font-size:13px;color:${C.sub};">RSI(2) ${r.signal.rsi2} · ${pct(r.signal.dayChangePct)} today · ${pct(r.signal.pctFromSma200)} vs 200d. No 3x fund to trade, so no order: context only.</div></td></tr>`).join('')}
+      ${sectorDips.map((r) => `<tr><td style="padding:12px 16px;font-size:14px;line-height:1.5;color:${C.ink};border-bottom:1px solid ${C.line};"><b>${esc(gated(r) ? r.fund : sectorName(r))}</b> (${esc(r.underlying)}): ${esc(r.signal.reasons.join('. '))}.<div style="font-size:13px;color:${C.sub};">RSI(2) ${r.signal.rsi2} · ${pct(r.signal.dayChangePct)} today · ${pct(r.signal.pctFromSma200)} vs 200d. ${gated(r) ? 'Not yet validated by the replay, so no order: context only.' : 'No 3x fund to trade, so no order: context only.'}</div></td></tr>`).join('')}
     </table>
   </td></tr>` : ''}
 

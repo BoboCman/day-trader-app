@@ -299,11 +299,12 @@ const rows = results
 
 // ---------- trends table: fund return in bold, index beneath. Context only, never an order.
 const trendNum = (n) => (n === null || n === undefined ? '–' : (n > 0 ? '+' : '') + Number(n).toFixed(1) + '%');
+// Watch-only rows: fund and index are the same sector fund, so show the number once.
 const trendCell = (r, k) => {
   const f = r.trend?.fund?.[k], i = r.trend?.index?.[k];
   return `<td align="right" style="padding:8px 10px;border-bottom:1px solid ${C.line};white-space:nowrap;">
     <div style="font-size:13px;font-weight:600;color:${tone(f ?? 0)};">${trendNum(f)}</div>
-    <div style="font-size:11px;color:${C.sub};">${trendNum(i)}</div></td>`;
+    ${tradable(r) ? `<div style="font-size:11px;color:${C.sub};">${trendNum(i)}</div>` : ''}</td>`;
 };
 const withTrend = results.filter((r) => !r.error && r.trend);
 // Watch-only rows have no 3x fund, so the bold number is the sector fund itself.
@@ -320,7 +321,7 @@ const offCell = (r, k) => {
   const shade = (v) => (v === null || v === undefined ? C.sub : v <= -10 ? C.red : v < 0 ? C.amber : C.green);
   return `<td align="right" style="padding:8px 10px;border-bottom:1px solid ${C.line};white-space:nowrap;">
     <div style="font-size:13px;font-weight:600;color:${shade(f)};">${trendNum(f)}</div>
-    <div style="font-size:11px;color:${C.sub};">${trendNum(i)}</div></td>`;
+    ${tradable(r) ? `<div style="font-size:11px;color:${C.sub};">${trendNum(i)}</div>` : ''}</td>`;
 };
 // Where each fund's highs were: windows that share the same high are merged ("1M–3M high").
 const WIN_LABEL = { d5: '5D', m1: '1M', m3: '3M', m6: '6M', m12: '12M' };

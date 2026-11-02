@@ -108,7 +108,8 @@ export function cautionFor(input: {
   if (input.fear?.regime === "spiking") reasons.push(`Fear gauge spiking (${input.fear.symbol} ${input.fear.pctVs20d}% above its 20-day average)`);
   if (input.breadth.kind === "narrow") reasons.push(`Narrow drop: only ${input.breadth.down} of ${input.breadth.total} top holdings fell`);
   if (input.breadth.shocks.length) reasons.push(`Single-stock shock: ${input.breadth.shocks.map((s) => `${s.symbol} ${s.pct}%`).join(", ")}`);
-  if (input.news.length) reasons.push(`News on top holdings: ${[...new Set(input.news.map((n) => n.symbol))].join(", ")}`);
+  // Headlines are shown for context but don't halve the size: Alpaca tags every ticker an article
+  // mentions, so most hits are noise. Real company events show up as a single-stock shock instead.
   if (input.events.length) reasons.push(`Event in the next few days: ${input.events.map((e) => `${e.name} ${e.date}`).join("; ")}`);
   return { sizeMultiplier: reasons.length ? 0.5 : 1, reasons };
 }

@@ -60,6 +60,7 @@ const asOf = new Date(data.asOf).toLocaleTimeString('en-US', {
 const pill = (text, fg, bg) =>
   `<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:${bg};color:${fg};font-size:12px;font-weight:600;letter-spacing:.2px;">${esc(text)}</span>`;
 
+const closedNote = data.marketOpen ? '' : `<div style="font-size:13px;color:${C.sub};padding-top:6px;">Market closed. Signals below are from the last session's close and are not live orders.</div>`;
 const status = !data.marketOpen
   ? pill('Market closed', C.grey, C.greyBg)
   : sells.length
@@ -92,16 +93,6 @@ const ticket = (steps) => `
     </td></tr>
   </table>`;
 
-// Profit-target limit prices (+3/+5/+8%) for the optional OCO sell.
-const TARGETS = [3, 5, 8];
-const targetPx = (base, t) => Math.round(base * (1 + t / 100) * 100) / 100;
-const targetList = (base) => TARGETS.map((t) => `+${t}% <b>${money(targetPx(base, t))}</b>`).join(' · ');
-// For an open lot: a limit below the current price would fill at once, so flag targets already passed.
-const heldTargets = (p) => TARGETS.map((t) => {
-  const px = targetPx(p.entryPrice, t);
-  return px <= p.price ? `<span style="color:${C.sub};">+${t}% ${money(px)} (already above)</span>` : `+${t}% <b>${money(px)}</b>`;
-}).join(' · ');
-
 const positionCard = (p) => {
   if (p.error) return `<tr><td style="padding:0 0 10px 0;font-size:13px;color:${C.red};">${esc(p.fund)}: ${esc(p.error)}</td></tr>`;
   const sell = p.action === 'SELL_TODAY';
@@ -126,14 +117,15 @@ const positionCard = (p) => {
             <div style="font-size:12px;color:${C.sub};">GTC, -${p.stopLossPct ?? 25}%</div>
           </td>
         </tr></table>
-        ${sell
+        ${sell && !data.marketOpen
+          ? `<div style="font-size:13px;color:${C.ink};padding-top:10px;">${esc(p.reasons.join('. '))}. <b>Market closed:</b> sell at the next session's 3:45-3:55 PM window if the rule still holds.</div>`
+          : sell
           ? `<div style="font-size:13px;color:${C.ink};padding-top:10px;">${esc(p.reasons.join('. '))}.</div>` + ticket([
-              `<b>Cancel your GTC stop</b> (or One-Cancels-the-Other order) on ${esc(p.fund)} first`,
+              `<b>Cancel your GTC stop</b> on ${esc(p.fund)} first, and check it shows as canceled`,
               `<b>Sell ${p.shares} ${esc(p.fund)}</b> · limit <b>${money(limit)}</b> · day order · place 3:45-3:55 PM ET`,
               `Mark it sold${appUrl ? ` at <a href="${esc(appUrl)}/positions" style="color:${C.brand};">${esc(appUrl.replace(/^https?:\/\//, ''))}/positions</a>` : ' on the positions page'}`,
             ])
-          : `<div style="font-size:13px;color:${C.sub};padding-top:10px;">No exit rule met. Keep holding; your stop stays in place.</div>
-             <div style="font-size:13px;color:${C.ink};padding-top:6px;">Optional profit targets from your ${money(p.entryPrice)} fill: ${heldTargets(p)}. Use one as the limit side of a One-Cancels-the-Other order with your ${money(p.stopPrice)} stop.</div>`}
+          : `<div style="font-size:13px;color:${C.sub};padding-top:10px;">No exit rule met. Keep holding; your stop stays in place.</div>`}
       </td></tr>
     </table>
   </td></tr>`;
@@ -181,7 +173,7 @@ const buyCard = (r) => {
           </td>
           <td align="right" valign="middle">${top ? pill(buys.length > 1 ? 'TOP PICK' : 'BUY', '#ffffff', C.green) : pill('ALTERNATIVE', C.grey, C.greyBg)}</td>
         </tr></table>
-        ${top ? '' : `<div style="font-size:12px;color:${C.sub};padding-top:6px;">Only if you pass on the top pick. One trade at a time.</div>`}
+        ${top ? '' : `<div style="font-size:12px;color:${C.sub};padding-top:6px;">Only if you pass on the top pick. One new trade per day.</div>`}
         <div style="padding-top:8px;">${ruleChips(s)}</div>
         <div style="font-size:14px;line-height:1.5;color:${C.ink};">${esc(noteFor(r.fund) || s.reasons.join('. '))}</div>
         <div style="font-size:12px;color:${C.sub};padding-top:6px;">${esc(r.underlying)} ${s.price} · <span style="color:${tone(s.dayChangePct)};">${pct(s.dayChangePct)}</span> today · ${pct(s.pctFromSma200)} vs 200-day</div>
@@ -190,7 +182,8 @@ const buyCard = (r) => {
         ${buyCaution(r) ? `<div style="margin-top:10px;font-size:13px;color:${C.amber};background:${C.amberBg};border-radius:8px;padding:10px 12px;">${esc(buyCaution(r))}.</div>` : ''}
         ${orderRow}
         ${qualityBox(r)}
-        ${o && top && o.fullShares === 0 ? `<div style="margin-top:12px;font-size:13px;color:${C.amber};background:${C.amberBg};border-radius:8px;padding:10px 12px;">${
+        ${o?.notLive ? `<div style="margin-top:12px;font-size:13px;color:${C.ink};background:${C.greyBg};border-radius:8px;padding:10px 12px;"><b>Not a live order.</b> ${esc(o.notLive)}.</div>` : ''}
+        ${o && !o.notLive && top && o.fullShares === 0 ? `<div style="margin-top:12px;font-size:13px;color:${C.amber};background:${C.amberBg};border-radius:8px;padding:10px 12px;">${
           data.positionsUnavailable
             ? 'Couldn\'t load your positions, so no size is given. Check the positions page before buying anything.'
             : o.afterSells?.fullShares
@@ -203,11 +196,10 @@ const buyCard = (r) => {
                     ? `${esc(r.fund)} trades too little for a sensible order size today. Skip this one.`
                     : `Your $${Math.round(data.risk?.totalCapUsd ?? 0).toLocaleString('en-US')} cap is already in use by open positions. Skip this one, or only take it after you sell.`
         }</div>` : ''}
-        ${o && top && (o.fullShares > 0 || o.afterSells?.fullShares) ? ((n) => ticket([
+        ${o && !o.notLive && top && (o.fullShares > 0 || o.afterSells?.fullShares) ? ((n) => ticket([
           ...(o.fullShares === 0 ? [`<b>Wait until your sell fills</b>, then mark it sold`] : []),
           `<b>Buy ${n} ${esc(r.fund)}</b> · limit <b>${money(o.suggestedLimit)}</b> · day order · place 3:45-3:55 PM ET. Check Fidelity's ask first: if it's above the limit, don't chase; if it's lower, use the ask`,
           `Once filled: <b>sell stop ${n} sh at ${money(o.stopPrice ?? o.suggestedLimit * (1 - (o.stopLossPct ?? 25) / 100))}</b> · good 'til canceled (${o.stopLossPct ?? 25}% stop)`,
-          `Optional profit target: make it a <b>One-Cancels-the-Other</b> order (Fidelity conditional orders) with a GTC sell limit at ${targetList(o.suggestedLimit)}. Prices assume a fill at the limit; recompute from your fill. Untested until the replay says so; stop only follows the tested rules`,
           `Log the fill${appUrl ? ` at <a href="${esc(logUrl(r, o, n))}" style="color:${C.brand};">${esc(appUrl.replace(/^https?:\/\//, ''))}/positions</a> (pre-filled)` : ' on the positions page'} so tomorrow's email tracks it`,
         ]))(o.fullShares || o.afterSells.fullShares) : ''}
       </td></tr>
@@ -387,7 +379,8 @@ const html = `<!doctype html>
   <tr><td style="background:${C.card};padding:20px 22px;border-radius:0 0 12px 12px;border:1px solid ${C.line};border-top:none;">
     <div style="padding-bottom:8px;">${status}</div>
     <div style="font-size:22px;line-height:1.3;font-weight:700;color:${C.ink};">${esc(headline)}</div>
-    ${buys.length > 1 ? `<div style="font-size:13px;color:${C.sub};padding-top:6px;">${buys.length} funds signalled. Top pick: <b style="color:${C.ink};">${esc(data.topPick ?? buys[0].fund)}</b>, the most oversold. One trade at a time${data.risk ? `, up to ${usd0(data.risk.totalCapUsd)}` : ''}.</div>` : ''}
+    ${closedNote}
+    ${buys.length > 1 ? `<div style="font-size:13px;color:${C.sub};padding-top:6px;">${buys.length} funds signalled. Top pick: <b style="color:${C.ink};">${esc(data.topPick ?? buys[0].fund)}</b>, the most oversold. One new trade per day${data.risk ? `, up to ${usd0(data.risk.totalCapUsd)}` : ''}.</div>` : ''}
   </td></tr>
 
   <tr><td style="height:18px;"></td></tr>

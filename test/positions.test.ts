@@ -9,8 +9,8 @@ describe("positions", () => {
     expect(sessionsSince("2026-10-30", ["2026-10-30", "2026-11-02", "2026-11-03"])).toBe(2);
   });
 
-  it("sets the disaster stop 25% under entry", () => {
-    expect(disasterStop(172.76)).toBe(129.57);
+  it("sets the default stop 10% under entry", () => {
+    expect(disasterStop(172.76)).toBe(155.48);
   });
 
   it("holds when no exit rule is met", () => {
@@ -23,7 +23,7 @@ describe("positions", () => {
   it("flags sell today on an exit rule, the time stop, or the disaster stop", () => {
     expect(evaluatePosition(p, { price: 180, day: 2, rsi2Exit: true, double7Exit: false }).action).toBe("SELL_TODAY");
     expect(evaluatePosition(p, { price: 170, day: 7, rsi2Exit: false, double7Exit: false }).action).toBe("SELL_TODAY");
-    expect(evaluatePosition(p, { price: 120, day: 1, rsi2Exit: false, double7Exit: false }).reasons[0]).toMatch(/25% stop/);
+    expect(evaluatePosition(p, { price: 120, day: 1, rsi2Exit: false, double7Exit: false }).reasons[0]).toMatch(/10% stop/);
   });
 });
 

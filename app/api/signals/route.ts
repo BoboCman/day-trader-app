@@ -54,8 +54,9 @@ export async function GET(req: Request) {
     const today = nyDate(now);
     const clock = await marketClock();
 
-    const underlyings = WATCHLIST.map((w) => w.underlying);
-    const funds = WATCHLIST.map((w) => w.fund);
+    const underlyings = [...new Set(WATCHLIST.map((w) => w.underlying))];
+    // Watch-only sectors use the sector fund itself as `fund`, so skip duplicates.
+    const funds = [...new Set(WATCHLIST.map((w) => w.fund))].filter((f) => !underlyings.includes(f));
     const holdings = [...new Set(Object.values(TOP_HOLDINGS).flat())];
     // Context data is best-effort: a failure there must never block the core signals.
     const [history, live, positions, holdingBars, holdingLive, news] = await Promise.all([
@@ -145,10 +146,10 @@ export async function GET(req: Request) {
     // because all signals share one capital cap.
     const candidates =
       evaluated.flatMap((r) =>
-        "signal" in r && r.signal.action === "BUY" && r.fundPrice
+        "signal" in r && r.tradable && r.signal.action === "BUY" && r.fundPrice
           ? [{ fund: r.fund, fundPrice: r.fundPrice, rsi2: r.signal.rsi2,
                pctFromSma200: r.signal.pctFromSma200, dailyVolPct: r.signal.dailyVolPct,
-               sizeMultiplier: r.context.caution.sizeMultiplier }]
+               sizeMultiplier: r.context.caution.sizeMultiplier, leverage: r.leverage }]
           : [],
       );
     const plan = planOrders(candidates, { ...risk, totalCapUsd: capRemainingUsd });
@@ -178,8 +179,10 @@ export async function GET(req: Request) {
 
     const topPick = [...plan.entries()].find(([, o]) => o.recommended)?.[0] ?? null;
 
-    const buys = results.filter((r) => "signal" in r && r.signal.action === "BUY");
-    const exits = results.filter((r) => "signal" in r && r.signal.action === "EXIT_IF_HOLDING");
+    const buys = results.filter((r) => "signal" in r && r.tradable && r.signal.action === "BUY");
+    // Watch-only sectors that met the buy rules: reported as a dip, never an order.
+    const sectorDips = results.filter((r) => "signal" in r && !r.tradable && r.signal.action === "BUY");
+    const exits = results.filter((r) => "signal" in r && r.tradable && r.signal.action === "EXIT_IF_HOLDING");
     const errors = results.filter((r) => "error" in r);
 
     const subject = !clock.is_open
@@ -194,7 +197,7 @@ export async function GET(req: Request) {
       .map((r) =>
         "error" in r
           ? `${r.fund}: data error, ${r.error}`
-          : `${r.fund} (${r.underlying} ${r.signal.price}, ${r.signal.dayChangePct}% today, ` +
+          : `${r.fund}${r.tradable ? "" : " [watch-only, no 3x fund]"} (${r.underlying} ${r.signal.price}, ${r.signal.dayChangePct}% today, ` +
             `${r.signal.pctFromSma200}% vs 200d, RSI2 ${r.signal.rsi2}): ${r.signal.action}` +
             (r.signal.reasons.length ? `. ${r.signal.reasons.join("; ")}` : "") +
             (r.context.caution.reasons.length ? `. Caution (half size): ${r.context.caution.reasons.join("; ")}` : "") +
@@ -235,9 +238,11 @@ export async function GET(req: Request) {
           (risk.maxLossPerTradeUsd
             ? ` Size is also capped so a stop-out loses at most about $${risk.maxLossPerTradeUsd.toLocaleString("en-US")}.`
             : "") +
-          " Capital stays committed until you mark a lot sold.",
+          " Capital stays committed until you mark a lot sold." +
+          " Energy, materials, staples and communication have no usable 3x fund, so their dips are shown as watch-only.",
       },
       buyCount: buys.length,
+      sectorDips: sectorDips.map((r) => r.underlying),
       exitCount: exits.length,
       errorCount: errors.length,
       subject,
@@ -270,7 +275,9 @@ export async function GET(req: Request) {
             : {
                 fund: r.fund,
                 index: r.underlying,
-                action: r.signal.action,
+                // Watch-only sectors have no 3x fund: a BUY there is a sector dip to mention, not a trade.
+                ...(r.tradable ? {} : { watchOnly: true }),
+                action: r.tradable || r.signal.action !== "BUY" ? r.signal.action : "SECTOR_DIP",
                 rsi2: r.signal.rsi2,
                 dayChangePct: r.signal.dayChangePct,
                 pctFromSma200: r.signal.pctFromSma200,

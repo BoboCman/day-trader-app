@@ -1,6 +1,6 @@
 # Day Trader App
 
-Weekday alerts for dip-buys in 3x leveraged sector ETFs: TECL (tech), CURE (health care) and FAS (financials). Three sectors with little overlap, so signals rarely double up on the same stocks.
+Weekday alerts for dip-buys across all 11 S&P 500 sectors. Seven have a tradable 3x fund: TECL (tech), CURE (health care), FAS (financials), WANT (consumer discretionary), DUSL (industrials), UTSL (utilities) and DRN (real estate). Energy, materials, consumer staples and communication services have no usable 3x fund, so their dips are reported as watch-only (no order). WANT, DUSL, UTSL and DRN trade thinly: limit orders only. The watchlist lives in `lib/config.ts`.
 
 - **Next.js on Vercel** makes the call. `GET /api/signals` runs the rules in plain code and returns JSON.
 - **n8n Cloud** runs at 3:40 PM ET on weekdays. It calls the endpoint, has Claude explain the result in plain English, and emails it.
@@ -10,7 +10,7 @@ The AI never decides a trade. It only explains what the rules returned.
 
 ## Rules
 
-Signals are computed on each fund's unleveraged underlying (XLK, XLV, XLF), using the live price near the close as "today's close".
+Signals are computed on each fund's unleveraged Select Sector SPDR (XLK, XLV, XLF, XLY, XLI, XLU, XLRE, XLE, XLB, XLP, XLC), using the live price near the close as "today's close".
 
 | | RSI(2) | Double 7s |
 |---|---|---|

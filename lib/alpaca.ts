@@ -103,15 +103,24 @@ export interface NewsItem {
 }
 
 /** Recent headlines for the given symbols (Alpaca news API, included in the free plan). */
-export async function recentNews(symbols: string[], sinceHours = 30): Promise<NewsItem[]> {
-  const q = new URLSearchParams({
-    symbols: symbols.join(","),
-    start: new Date(Date.now() - sinceHours * 3_600_000).toISOString(),
-    limit: "50",
-    sort: "desc",
-  });
-  const body = await get<{ news?: NewsItem[] }>(`${DATA}/v1beta1/news?${q}`);
-  return body.news ?? [];
+export async function recentNews(symbols: string[], sinceHours = 30, maxPages = 4): Promise<NewsItem[]> {
+  // 50 items per page; with all 11 sectors one page can be used up by a few busy names.
+  const out: NewsItem[] = [];
+  let pageToken: string | undefined;
+  let pages = 0;
+  do {
+    const q = new URLSearchParams({
+      symbols: symbols.join(","),
+      start: new Date(Date.now() - sinceHours * 3_600_000).toISOString(),
+      limit: "50",
+      sort: "desc",
+    });
+    if (pageToken) q.set("page_token", pageToken);
+    const body = await get<{ news?: NewsItem[]; next_page_token?: string | null }>(`${DATA}/v1beta1/news?${q}`);
+    out.push(...(body.news ?? []));
+    pageToken = body.next_page_token ?? undefined;
+  } while (pageToken && ++pages < maxPages);
+  return out;
 }
 
 export async function marketClock(): Promise<{ is_open: boolean; next_close: string; next_open: string }> {

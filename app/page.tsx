@@ -13,7 +13,7 @@ export default function Home() {
       <div style={card}>
         <div style={{ fontSize: 13, color: "#57606a", textTransform: "uppercase", letterSpacing: 0.8 }}>Leveraged ETF dip alerts</div>
         <h1 style={{ fontSize: 24, margin: "6px 0 4px" }}>Day Trader App</h1>
-        <div style={{ fontSize: 14, color: "#57606a" }}>TECL · CURE · FAS. Alerts at 3:40 PM ET; you trade at Fidelity.</div>
+        <div style={{ fontSize: 14, color: "#57606a" }}>All 11 S&P 500 sectors: TECL · CURE · FAS · WANT · DUSL · UTSL · DRN, plus watch-only energy, materials, staples and communication. Alerts at 3:40 PM ET; you trade at Fidelity.</div>
         <a href="/positions" style={big}>My positions</a>
         <a href="/replay" style={small}>Replay (historical test)</a>
       </div>

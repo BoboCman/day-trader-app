@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { TRADABLE } from "@/lib/config";
 
 interface Position {
   id: string;
@@ -15,11 +16,7 @@ interface Position {
   exitReason?: string;
 }
 
-const FUNDS = [
-  { fund: "TECL", name: "Technology 3x", index: "XLK" },
-  { fund: "CURE", name: "Health care 3x", index: "XLV" },
-  { fund: "FAS", name: "Financials 3x", index: "XLF" },
-];
+const FUNDS = TRADABLE.map((w) => ({ fund: w.fund, name: w.name, index: w.underlying }));
 const RULE_LABELS: Record<string, string> = { RSI2: "RSI(2) < 10", DOUBLE7: "7-day low", BOTH: "Both" };
 const REASONS: [string, string][] = [
   ["rsi2 exit", "Rule exit (5-day average)"], ["double7 exit", "Rule exit (7-day high)"], ["time stop", "7-day time stop"],
@@ -151,7 +148,8 @@ export default function PositionsPage() {
               </div>
             )}
 
-            {FUNDS.map(({ fund, name, index }) => {
+            {/* Funds you hold first, then the rest in watchlist order. */}
+            {[...FUNDS].sort((a, b) => Number(open.some((p) => p.fund === b.fund)) - Number(open.some((p) => p.fund === a.fund))).map(({ fund, name, index }) => {
               const lots = open.filter((p) => p.fund === fund);
               const shares = lots.reduce((s, p) => s + p.shares, 0);
               const cost = lots.reduce((s, p) => s + p.entryPrice * p.shares, 0);

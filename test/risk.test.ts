@@ -50,3 +50,14 @@ describe("loss budget", () => {
     expect(o.sizeLimitedBy).toBe("cap");
   });
 });
+
+describe("per-fund leverage", () => {
+  it("sizes a 2x fund larger than the same move in a 3x fund", () => {
+    const c = { fund: "X", fundPrice: 100, rsi2: 5, pctFromSma200: 5, dailyVolPct: 2 };
+    const three = sizeOrder(c, s, 1);
+    const two = sizeOrder({ ...c, leverage: 2 }, s, 1);
+    expect(three.fundDailyVolPct).toBe(6);
+    expect(two.fundDailyVolPct).toBe(4);
+    expect(two.sizeUsd).toBeGreaterThan(three.sizeUsd);
+  });
+});

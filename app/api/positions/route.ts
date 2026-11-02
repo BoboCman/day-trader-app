@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { authorized } from "@/lib/auth";
-import { riskSettings, WATCHLIST } from "@/lib/config";
+import { riskSettings, TRADABLE as WATCHLIST } from "@/lib/config";
 import type { Position } from "@/lib/positions";
 import { loadPositions, savePositions, storeConfigured } from "@/lib/store";
 

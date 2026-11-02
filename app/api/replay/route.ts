@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { dailyBars, nyDate } from "@/lib/alpaca";
 import { authorized } from "@/lib/auth";
-import { riskSettings, WATCHLIST } from "@/lib/config";
+import { riskSettings, TRADABLE as WATCHLIST } from "@/lib/config";
 import { align, replayFund, replayPortfolio, summarize, type Trade } from "@/lib/replay";
 
 export const dynamic = "force-dynamic";

@@ -23,13 +23,17 @@ const C = {
 const font = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 
 const results = data.results ?? [];
+// Watch-only sectors (no usable 3x fund) carry tradable: false: their dips are reported, never traded.
+const tradable = (r) => r.tradable !== false;
 const buys = results
-  .filter((r) => r.signal?.action === 'BUY')
+  .filter((r) => tradable(r) && r.signal?.action === 'BUY')
   .sort((a, b) => (a.order?.rank ?? 99) - (b.order?.rank ?? 99));
 const positions = (data.positions ?? []);
 const heldFunds = new Set(positions.map((p) => p.fund));
 const sells = positions.filter((p) => p.action === 'SELL_TODAY');
-const exits = results.filter((r) => r.signal?.action === 'EXIT_IF_HOLDING' && !heldFunds.has(r.fund));
+const exits = results.filter((r) => tradable(r) && r.signal?.action === 'EXIT_IF_HOLDING' && !heldFunds.has(r.fund));
+const sectorDips = results.filter((r) => !tradable(r) && r.signal?.action === 'BUY');
+const sectorName = (r) => (r.name ?? r.underlying).replace(/ \(no 3x fund\)$/, '');
 const appUrl = data.appUrl || '';
 const errors = results.filter((r) => r.error);
 const noteFor = (fund) => (ai.buyNotes ?? []).find((n) => n.fund === fund)?.note ?? '';
@@ -261,8 +265,9 @@ const noBuys = `
 const statusCell = (r) => {
   if (r.error) return pill('Data error', C.red, '#fdecea');
   const a = r.signal.action;
+  if (!tradable(r) && a === 'BUY') return pill('Dip · no 3x', C.amber, C.amberBg);
   if (a === 'BUY') return pill('Buy', C.green, C.greenBg);
-  if (a === 'EXIT_IF_HOLDING') return pill('Exit if holding', C.amber, C.amberBg);
+  if (tradable(r) && a === 'EXIT_IF_HOLDING') return pill('Exit if holding', C.amber, C.amberBg);
   const st = r.trend?.stance;
   if (st === 'WATCH') return pill('Watch', C.amber, C.amberBg);
   if (st === 'PASS' || !r.signal.aboveTrend) return pill('Pass', C.grey, C.greyBg);
@@ -278,7 +283,7 @@ const rows = results
     r.error
       ? `<tr>${td(`<b>${esc(r.fund)}</b>`)}${td(esc(r.underlying))}<td colspan="3" style="padding:10px;font-size:12px;color:${C.red};border-bottom:1px solid ${C.line};">${esc(r.error)}</td><td align="right" style="padding:10px;border-bottom:1px solid ${C.line};">${statusCell(r)}</td></tr>`
       : `<tr>
-          ${td(`<b>${esc(r.fund)}</b>`)}
+          ${td(tradable(r) ? `<b>${esc(r.fund)}</b>` : `<span style="color:${C.sub};">no 3x</span>`)}
           ${td(esc(r.underlying), 'left', C.sub)}
           ${td(pct(r.signal.dayChangePct), 'right', tone(r.signal.dayChangePct), 600)}
           ${td(pct(r.signal.pctFromSma200), 'right', tone(r.signal.pctFromSma200))}
@@ -297,9 +302,11 @@ const trendCell = (r, k) => {
     <div style="font-size:11px;color:${C.sub};">${trendNum(i)}</div></td>`;
 };
 const withTrend = results.filter((r) => !r.error && r.trend);
+// Watch-only rows have no 3x fund, so the bold number is the sector fund itself.
+const fundCell = (r) => `<td style="padding:8px 10px;border-bottom:1px solid ${C.line};"><div style="font-size:13px;font-weight:700;color:${C.ink};">${esc(tradable(r) ? r.fund : r.underlying)}</div><div style="font-size:11px;color:${C.sub};">${esc(tradable(r) ? r.underlying : 'no 3x fund')}</div></td>`;
 const trendRows = withTrend
   .map((r) => `<tr>
-      <td style="padding:8px 10px;border-bottom:1px solid ${C.line};"><div style="font-size:13px;font-weight:700;color:${C.ink};">${esc(r.fund)}</div><div style="font-size:11px;color:${C.sub};">${esc(r.underlying)}</div></td>
+      ${fundCell(r)}
       ${['d5', 'm1', 'm3', 'm6'].map((k) => trendCell(r, k)).join('')}
     </tr>`)
   .join('');
@@ -330,14 +337,14 @@ const highLine = (r) => {
     `${g.from === g.to ? WIN_LABEL[g.from] : `${WIN_LABEL[g.from]}–${WIN_LABEL[g.to]}`} high <b>${money(g.close)}</b>${g.date ? ` on ${shortDate(g.date)}` : ''} (<span style="color:${tone(g.off ?? 0)};">${trendNum(g.off)}</span>)`);
   return `<b>${esc(r.fund)}</b>: ${parts.join(' · ')}`;
 };
-const highLines = withTrend.map(highLine).filter(Boolean).join('<br>');
+const highLines = withTrend.filter(tradable).map(highLine).filter(Boolean).join('<br>');
 const offRows = withTrend.filter((r) => r.trend.fund?.offHigh)
   .map((r) => `<tr>
-      <td style="padding:8px 10px;border-bottom:1px solid ${C.line};"><div style="font-size:13px;font-weight:700;color:${C.ink};">${esc(r.fund)}</div><div style="font-size:11px;color:${C.sub};">${esc(r.underlying)}</div></td>
+      ${fundCell(r)}
       ${['d5', 'm1', 'm3', 'm6', 'm12'].map((k) => offCell(r, k)).join('')}
     </tr>`)
   .join('');
-const watches = withTrend.filter((r) => r.trend.stance === 'WATCH');
+const watches = withTrend.filter((r) => tradable(r) && r.trend.stance === 'WATCH');
 const buyCaution = (r) => (r.trend?.stance === 'BUY' && /negative/.test(r.trend.reason) ? r.trend.reason : '');
 
 const section = (title) =>
@@ -368,6 +375,13 @@ const html = `<!doctype html>
   ${positions.length ? section('Your positions') + positions.map(positionCard).join('') : ''}
   ${section(buys.length ? 'Buy signals' : 'Today')}
   ${buys.length ? buys.map(buyCard).join('') : noBuys}
+
+  ${sectorDips.length ? `${section('Sector dips · no 3x fund')}
+  <tr><td style="padding:0 0 14px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.card};border:1px solid ${C.line};border-left:4px solid #f1d58a;border-radius:10px;">
+      ${sectorDips.map((r) => `<tr><td style="padding:12px 16px;font-size:14px;line-height:1.5;color:${C.ink};border-bottom:1px solid ${C.line};"><b>${esc(sectorName(r))}</b> (${esc(r.underlying)}): ${esc(r.signal.reasons.join('. '))}.<div style="font-size:13px;color:${C.sub};">RSI(2) ${r.signal.rsi2} · ${pct(r.signal.dayChangePct)} today · ${pct(r.signal.pctFromSma200)} vs 200d. No 3x fund to trade, so no order: context only.</div></td></tr>`).join('')}
+    </table>
+  </td></tr>` : ''}
 
   ${exits.length ? `${section('If you are holding')}
   <tr><td style="padding:0 0 14px 0;">

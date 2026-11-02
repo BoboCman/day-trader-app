@@ -1,12 +1,38 @@
+export interface WatchItem {
+  /** Symbol you would buy. For a watch-only sector it is the sector fund itself (nothing to buy). */
+  fund: string;
+  /** Unleveraged Select Sector SPDR the signal runs on */
+  underlying: string;
+  name: string;
+  /** Daily leverage of `fund`, used for sizing */
+  leverage: number;
+  /** false = watch-only: the dip is reported, but no order is ever sized for it */
+  tradable: boolean;
+}
+
 /**
- * Watchlist: three low-overlap sectors (tech, health care, financials). Each leveraged fund is signalled off its unleveraged underlying,
- * which has cleaner price history and is what the fund actually tracks.
+ * Watchlist: all 11 S&P 500 sectors. Each leveraged fund is signalled off its unleveraged Select Sector
+ * SPDR, which has cleaner price history and is what the fund actually tracks.
+ * Sectors with no usable 3x fund (energy: only ERX at 2x; materials: none; staples and communication:
+ * only 3x ETNs launched Sep 2026 with little volume) are watch-only.
+ * TECL, CURE and FAS are the most liquid; WANT, DUSL, UTSL and DRN are thin, so use limit orders only.
  */
-export const WATCHLIST = [
-  { fund: "TECL", underlying: "XLK", name: "Technology 3x" },
-  { fund: "CURE", underlying: "XLV", name: "Health Care 3x" },
-  { fund: "FAS", underlying: "XLF", name: "Financials 3x" },
-] as const;
+export const WATCHLIST: readonly WatchItem[] = [
+  { fund: "TECL", underlying: "XLK", name: "Technology 3x", leverage: 3, tradable: true },
+  { fund: "CURE", underlying: "XLV", name: "Health Care 3x", leverage: 3, tradable: true },
+  { fund: "FAS", underlying: "XLF", name: "Financials 3x", leverage: 3, tradable: true },
+  { fund: "WANT", underlying: "XLY", name: "Consumer Discretionary 3x", leverage: 3, tradable: true },
+  { fund: "DUSL", underlying: "XLI", name: "Industrials 3x", leverage: 3, tradable: true },
+  { fund: "UTSL", underlying: "XLU", name: "Utilities 3x", leverage: 3, tradable: true },
+  { fund: "DRN", underlying: "XLRE", name: "Real Estate 3x", leverage: 3, tradable: true },
+  { fund: "XLE", underlying: "XLE", name: "Energy (no 3x fund)", leverage: 1, tradable: false },
+  { fund: "XLB", underlying: "XLB", name: "Materials (no 3x fund)", leverage: 1, tradable: false },
+  { fund: "XLP", underlying: "XLP", name: "Consumer Staples (no 3x fund)", leverage: 1, tradable: false },
+  { fund: "XLC", underlying: "XLC", name: "Communication Services (no 3x fund)", leverage: 1, tradable: false },
+];
+
+/** Funds you can actually buy (positions, replay, sizing). */
+export const TRADABLE = WATCHLIST.filter((w) => w.tradable);
 
 /**
  * Largest holdings of each underlying, used for the look-through (breadth and single-stock shocks).
@@ -16,6 +42,14 @@ export const TOP_HOLDINGS: Record<string, string[]> = {
   XLK: ["NVDA", "AAPL", "MSFT", "AVGO", "ORCL", "CRM", "CSCO", "AMD", "IBM", "NOW"],
   XLV: ["LLY", "UNH", "JNJ", "ABBV", "MRK", "TMO", "ABT", "ISRG", "AMGN", "DHR"],
   XLF: ["BRK.B", "JPM", "V", "MA", "BAC", "WFC", "GS", "MS", "AXP", "SPGI"],
+  XLY: ["AMZN", "TSLA", "HD", "MCD", "BKNG", "TJX", "LOW", "SBUX", "ORLY", "NKE"],
+  XLI: ["GE", "CAT", "RTX", "GEV", "UBER", "HON", "ETN", "UNP", "BA", "DE"],
+  XLU: ["NEE", "SO", "CEG", "DUK", "VST", "AEP", "SRE", "D", "EXC", "PEG"],
+  XLRE: ["WELL", "PLD", "AMT", "EQIX", "SPG", "O", "DLR", "PSA", "CCI", "CBRE"],
+  XLE: ["XOM", "CVX", "COP", "WMB", "EOG", "KMI", "SLB", "PSX", "MPC", "OKE"],
+  XLB: ["LIN", "SHW", "ECL", "NEM", "APD", "FCX", "CTVA", "MLM", "VMC", "NUE"],
+  XLP: ["COST", "WMT", "PG", "KO", "PM", "PEP", "MDLZ", "MO", "CL", "TGT"],
+  XLC: ["META", "GOOGL", "NFLX", "TMUS", "DIS", "EA", "T", "VZ", "CMCSA", "TTWO"],
 };
 
 /** Proxy for the VIX fear gauge (VIX itself is an index Alpaca doesn't carry). */
@@ -62,6 +96,7 @@ export function riskSettings() {
   return {
     totalCapUsd: envNum("POSITION_SIZE_USD", 25_000),
     riskPerDayUsd: envNum("RISK_PER_DAY_USD", 1_000),
+    /** Default leverage; each watchlist entry carries its own */
     leverage: 3,
     /** Protective GTC stop distance below the entry, in % (positive number) */
     stopLossPct: envNum("STOP_LOSS_PCT", -RULES.disasterStopPct),

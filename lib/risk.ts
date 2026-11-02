@@ -12,6 +12,8 @@ export interface BuyCandidate {
   dailyVolPct: number;
   /** 0.5 when a caution flag is up (release 2), else 1 */
   sizeMultiplier?: number;
+  /** Daily leverage of the fund; falls back to the settings default */
+  leverage?: number;
 }
 
 export interface SizedOrder {
@@ -53,7 +55,7 @@ export function rankBuys<T extends BuyCandidate>(buys: T[]): T[] {
 
 export function sizeOrder(c: BuyCandidate, s: RiskSettings, rank: number): SizedOrder {
   const suggestedLimit = Math.round(c.fundPrice * 1.005 * 100) / 100;
-  const fundDailyVolPct = c.dailyVolPct * s.leverage;
+  const fundDailyVolPct = c.dailyVolPct * (c.leverage ?? s.leverage);
   const riskSized = fundDailyVolPct > 0 ? s.riskPerDayUsd / (fundDailyVolPct / 100) : s.totalCapUsd;
   const stopLossPct = s.stopLossPct ?? 25;
   const lossSized = s.maxLossPerTradeUsd ? s.maxLossPerTradeUsd / (stopLossPct / 100) : Infinity;

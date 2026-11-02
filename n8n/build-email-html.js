@@ -38,6 +38,8 @@ const exitRelevant = (r) => tradable(r) && r.signal?.action === 'EXIT_IF_HOLDING
 const exits = tracking ? [] : results.filter((r) => exitRelevant(r) && !heldFunds.has(r.fund));
 const sectorDips = results.filter((r) => !tradable(r) && r.signal?.action === 'BUY');
 const sectorName = (r) => (r.name ?? r.underlying).replace(/ \(no 3x fund\)$/, '');
+// Short sector label for narrow table cells on watch-only rows.
+const sectorShort = (r) => sectorName(r).replace(/^Consumer /, '').replace(/ Services$/, '');
 const appUrl = data.appUrl || '';
 const errors = results.filter((r) => r.error);
 const noteFor = (fund) => (ai.buyNotes ?? []).find((n) => n.fund === fund)?.note ?? '';
@@ -287,7 +289,7 @@ const rows = results
     r.error
       ? `<tr>${td(`<b>${esc(r.fund)}</b>`)}${td(esc(r.underlying))}<td colspan="3" style="padding:10px;font-size:12px;color:${C.red};border-bottom:1px solid ${C.line};">${esc(r.error)}</td><td align="right" style="padding:10px;border-bottom:1px solid ${C.line};">${statusCell(r)}</td></tr>`
       : `<tr>
-          ${td(tradable(r) ? `<b>${esc(r.fund)}</b>` : `<span style="color:${C.sub};">no 3x</span>`)}
+          ${td(tradable(r) ? `<b>${esc(r.fund)}</b>` : `<span style="color:${C.sub};">${esc(sectorShort(r))}</span>`)}
           ${td(esc(r.underlying), 'left', C.sub)}
           ${td(pct(r.signal.dayChangePct), 'right', tone(r.signal.dayChangePct), 600)}
           ${td(pct(r.signal.pctFromSma200), 'right', tone(r.signal.pctFromSma200))}
@@ -308,7 +310,7 @@ const trendCell = (r, k) => {
 };
 const withTrend = results.filter((r) => !r.error && r.trend);
 // Watch-only rows have no 3x fund, so the bold number is the sector fund itself.
-const fundCell = (r) => `<td style="padding:8px 10px;border-bottom:1px solid ${C.line};"><div style="font-size:13px;font-weight:700;color:${C.ink};">${esc(tradable(r) ? r.fund : r.underlying)}</div><div style="font-size:11px;color:${C.sub};">${esc(tradable(r) ? r.underlying : 'no 3x fund')}</div></td>`;
+const fundCell = (r) => `<td style="padding:8px 10px;border-bottom:1px solid ${C.line};"><div style="font-size:13px;font-weight:700;color:${C.ink};">${esc(tradable(r) ? r.fund : r.underlying)}</div><div style="font-size:11px;color:${C.sub};">${esc(tradable(r) ? r.underlying : sectorShort(r))}</div></td>`;
 const trendRows = withTrend
   .map((r) => `<tr>
       ${fundCell(r)}

@@ -31,7 +31,11 @@ const buys = results
 const positions = (data.positions ?? []);
 const heldFunds = new Set(positions.map((p) => p.fund));
 const sells = positions.filter((p) => p.action === 'SELL_TODAY');
-const exits = results.filter((r) => tradable(r) && r.signal?.action === 'EXIT_IF_HOLDING' && !heldFunds.has(r.fund));
+// With position tracking on, held funds already get exit advice on their position cards, so an
+// exit on a fund you don't hold is noise. Without tracking, keep the generic "if you are holding" list.
+const tracking = !!data.positionsEnabled;
+const exitRelevant = (r) => tradable(r) && r.signal?.action === 'EXIT_IF_HOLDING' && (!tracking || heldFunds.has(r.fund));
+const exits = tracking ? [] : results.filter((r) => exitRelevant(r) && !heldFunds.has(r.fund));
 const sectorDips = results.filter((r) => !tradable(r) && r.signal?.action === 'BUY');
 const sectorName = (r) => (r.name ?? r.underlying).replace(/ \(no 3x fund\)$/, '');
 const appUrl = data.appUrl || '';
@@ -267,7 +271,7 @@ const statusCell = (r) => {
   const a = r.signal.action;
   if (!tradable(r) && a === 'BUY') return pill('Dip · no 3x', C.amber, C.amberBg);
   if (a === 'BUY') return pill('Buy', C.green, C.greenBg);
-  if (tradable(r) && a === 'EXIT_IF_HOLDING') return pill('Exit if holding', C.amber, C.amberBg);
+  if (exitRelevant(r)) return pill('Exit if holding', C.amber, C.amberBg);
   const st = r.trend?.stance;
   if (st === 'WATCH') return pill('Watch', C.amber, C.amberBg);
   if (st === 'PASS' || !r.signal.aboveTrend) return pill('Pass', C.grey, C.greyBg);

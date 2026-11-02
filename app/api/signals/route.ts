@@ -206,6 +206,16 @@ export async function GET(req: Request) {
       )
       .join("\n");
 
+    // What the AI may say about each fund. Watch-only BUYs are sector dips, never buys. With position
+    // tracking on, an exit on a fund you don't hold is irrelevant (held funds get it on their position card).
+    const heldFundSet = new Set(openLots.map((p) => p.fund));
+    const aiAction = (r: { tradable: boolean; fund: string; signal: { action: string } }) =>
+      !r.tradable && r.signal.action === "BUY"
+        ? "SECTOR_DIP"
+        : r.signal.action === "EXIT_IF_HOLDING" && (!r.tradable || (storeConfigured() && !heldFundSet.has(r.fund)))
+          ? "NONE"
+          : r.signal.action;
+
     const body = {
       asOf: now.toISOString(),
       date: today,
@@ -277,11 +287,11 @@ export async function GET(req: Request) {
                 index: r.underlying,
                 // Watch-only sectors have no 3x fund: a BUY there is a sector dip to mention, not a trade.
                 ...(r.tradable ? {} : { watchOnly: true }),
-                action: r.tradable || r.signal.action !== "BUY" ? r.signal.action : "SECTOR_DIP",
+                action: aiAction(r),
                 rsi2: r.signal.rsi2,
                 dayChangePct: r.signal.dayChangePct,
                 pctFromSma200: r.signal.pctFromSma200,
-                reasons: r.signal.reasons,
+                reasons: aiAction(r) === "NONE" ? [] : r.signal.reasons,
                 caution: r.context.caution.reasons,
                 breadth: `${r.context.breadth.down} of ${r.context.breadth.total} top holdings down (${r.context.breadth.kind})`,
                 headlines: r.context.news.slice(0, 3).map((n) => `${n.symbol}: ${n.headline}`),

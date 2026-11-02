@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TOP_HOLDINGS, TRADABLE, WATCHLIST } from "../lib/config";
+import { ticketsEnabled, TOP_HOLDINGS, TRADABLE, WATCHLIST } from "../lib/config";
 
 describe("watchlist", () => {
   it("covers all 11 S&P 500 sectors once", () => {
@@ -14,5 +14,17 @@ describe("watchlist", () => {
   });
   it("has top holdings for every sector", () => {
     for (const w of WATCHLIST) expect(TOP_HOLDINGS[w.underlying]?.length).toBeGreaterThanOrEqual(5);
+  });
+});
+
+describe("gated funds", () => {
+  const byFund = (f: string) => WATCHLIST.find((w) => w.fund === f)!;
+  it("gives tickets only to validated funds by default", () => {
+    expect(WATCHLIST.filter((w) => ticketsEnabled(w, "")).map((w) => w.fund)).toEqual(["TECL", "CURE", "FAS"]);
+  });
+  it("unlocks a gated fund through ENABLED_FUNDS, never a watch-only sector", () => {
+    expect(ticketsEnabled(byFund("DRN"), "want, drn")).toBe(true);
+    expect(ticketsEnabled(byFund("DUSL"), "want, drn")).toBe(false);
+    expect(ticketsEnabled(byFund("XLE"), "XLE")).toBe(false);
   });
 });

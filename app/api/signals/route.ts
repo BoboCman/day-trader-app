@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { dailyCloses, latestPrices, marketClock, nyDate, recentNews, type NewsItem, type Quote } from "@/lib/alpaca";
-import { FEAR_PROXY, riskSettings, RULES, TOP_HOLDINGS, WATCHLIST } from "@/lib/config";
+import { FEAR_PROXY, riskSettings, RULES, ticketsEnabled, TOP_HOLDINGS, WATCHLIST } from "@/lib/config";
 import { breadth, cautionFor, fearGauge, newsFlags, upcomingEvents } from "@/lib/context";
 import { stanceFor, trendStats } from "@/lib/trends";
 import { authorized } from "@/lib/auth";
@@ -100,8 +100,15 @@ export async function GET(req: Request) {
       // is a single-exchange print that can differ from the close Yahoo and Fidelity show.
       const fundSeries = withLive(history[w.fund] ?? [], live[w.fund]);
       const fundPrice = fundSeries.closes.at(-1) ?? live[w.fund]?.price ?? null;
+      // 20-day average dollar volume of the fund (SIP daily bars), for the liquidity cap.
+      const fundBars = (history[w.fund] ?? []).slice(-20);
+      const advUsd = fundBars.length && fundBars.every((b) => b.v)
+        ? Math.round(fundBars.reduce((t, b) => t + b.c * (b.v ?? 0), 0) / fundBars.length)
+        : null;
       return {
         ...w,
+        ticketsEnabled: ticketsEnabled(w),
+        advUsd,
         fundPrice,
         signal,
         context: { breadth: b, news: flags, caution },
@@ -144,12 +151,19 @@ export async function GET(req: Request) {
 
     // Risk layer: rank the buys, size each by volatility, recommend only the top one
     // because all signals share one capital cap.
+    // What every open lot would lose if its stop filled (stop = entry less the stop %).
+    const openStopRiskUsd = openLots.reduce((t, p) => t + p.entryPrice * p.shares * (risk.stopLossPct / 100), 0);
     const candidates =
       evaluated.flatMap((r) =>
-        "signal" in r && r.tradable && r.signal.action === "BUY" && r.fundPrice
+        "signal" in r && r.ticketsEnabled && r.signal.action === "BUY" && r.fundPrice
           ? [{ fund: r.fund, fundPrice: r.fundPrice, rsi2: r.signal.rsi2,
                pctFromSma200: r.signal.pctFromSma200, dailyVolPct: r.signal.dailyVolPct,
-               sizeMultiplier: r.context.caution.sizeMultiplier, leverage: r.leverage }]
+               sizeMultiplier: r.context.caution.sizeMultiplier, leverage: r.leverage,
+               // Per-fund cap: all open lots of this fund count against it.
+               fundRoomUsd: risk.totalCapUsd * (risk.maxFundPct / 100) -
+                 openLots.filter((p) => p.fund === r.fund).reduce((t, p) => t + p.entryPrice * p.shares, 0),
+               liquidityCapUsd: r.advUsd ? r.advUsd * (risk.maxAdvPct / 100) : undefined,
+               stopRiskRoomUsd: risk.maxTotalStopRiskUsd ? risk.maxTotalStopRiskUsd - openStopRiskUsd : undefined }]
           : [],
       );
     const plan = planOrders(candidates, { ...risk, totalCapUsd: capRemainingUsd });
@@ -179,9 +193,9 @@ export async function GET(req: Request) {
 
     const topPick = [...plan.entries()].find(([, o]) => o.recommended)?.[0] ?? null;
 
-    const buys = results.filter((r) => "signal" in r && r.tradable && r.signal.action === "BUY");
-    // Watch-only sectors that met the buy rules: reported as a dip, never an order.
-    const sectorDips = results.filter((r) => "signal" in r && !r.tradable && r.signal.action === "BUY");
+    const buys = results.filter((r) => "signal" in r && r.ticketsEnabled && r.signal.action === "BUY");
+    // Watch-only sectors and gated funds that met the buy rules: reported as a dip, never an order.
+    const sectorDips = results.filter((r) => "signal" in r && !r.ticketsEnabled && r.signal.action === "BUY");
     const exits = results.filter((r) => "signal" in r && r.tradable && r.signal.action === "EXIT_IF_HOLDING");
     const errors = results.filter((r) => "error" in r);
 
@@ -209,8 +223,8 @@ export async function GET(req: Request) {
     // What the AI may say about each fund. Watch-only BUYs are sector dips, never buys. With position
     // tracking on, an exit on a fund you don't hold is irrelevant (held funds get it on their position card).
     const heldFundSet = new Set(openLots.map((p) => p.fund));
-    const aiAction = (r: { tradable: boolean; fund: string; signal: { action: string } }) =>
-      !r.tradable && r.signal.action === "BUY"
+    const aiAction = (r: { tradable: boolean; ticketsEnabled: boolean; fund: string; signal: { action: string } }) =>
+      !r.ticketsEnabled && r.signal.action === "BUY"
         ? "SECTOR_DIP"
         : r.signal.action === "EXIT_IF_HOLDING" && (!r.tradable || (storeConfigured() && !heldFundSet.has(r.fund)))
           ? "NONE"
@@ -229,6 +243,7 @@ export async function GET(req: Request) {
       capInUseUsd: Math.round(capInUse),
       capRemainingUsd,
       capAfterSellsUsd,
+      openStopRiskUsd: Math.round(openStopRiskUsd),
       positionsUnavailable,
       sellTodayCount: sellToday.length,
       context: {
@@ -249,7 +264,9 @@ export async function GET(req: Request) {
             ? ` Size is also capped so a stop-out loses at most about $${risk.maxLossPerTradeUsd.toLocaleString("en-US")}.`
             : "") +
           " Capital stays committed until you mark a lot sold." +
-          " Energy, materials, staples and communication have no usable 3x fund, so their dips are shown as watch-only.",
+          (risk.maxTotalStopRiskUsd ? ` All open stops together may lose at most about $${risk.maxTotalStopRiskUsd.toLocaleString("en-US")}.` : "") +
+          ` No fund may hold more than ${risk.maxFundPct}% of the cap, and no order may exceed ${risk.maxAdvPct}% of the fund's average daily dollar volume.` +
+          " Energy, materials, staples and communication have no usable 3x fund, and WANT, DUSL, UTSL and DRN get no ticket until the replay validates them, so their dips are shown without an order.",
       },
       buyCount: buys.length,
       sectorDips: sectorDips.map((r) => r.underlying),
@@ -287,6 +304,7 @@ export async function GET(req: Request) {
                 index: r.underlying,
                 // Watch-only sectors have no 3x fund: a BUY there is a sector dip to mention, not a trade.
                 ...(r.tradable ? {} : { watchOnly: true }),
+                ...(r.tradable && !r.ticketsEnabled ? { gated: true } : {}),
                 action: aiAction(r),
                 rsi2: r.signal.rsi2,
                 dayChangePct: r.signal.dayChangePct,
